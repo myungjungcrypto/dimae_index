@@ -1,0 +1,510 @@
+from __future__ import annotations
+
+import sqlite3
+from collections.abc import Iterable
+from dataclasses import fields, is_dataclass
+from datetime import date
+from pathlib import Path
+from typing import Any
+
+from .models import ArticleScore, CommunityPost, TrendPoint, utc_now_iso
+
+
+class SentimentStore:
+    def __init__(self, path: Path | str) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    def connect(self) -> sqlite3.Connection:
+        con = sqlite3.connect(self.path)
+        con.row_factory = sqlite3.Row
+        return con
+
+    def initialize(self) -> None:
+        with self.connect() as con:
+            con.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS posts (
+                    url TEXT PRIMARY KEY,
+                    source TEXT NOT NULL,
+                    source_name TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    published_at TEXT,
+                    keyword TEXT,
+                    author TEXT,
+                    views INTEGER,
+                    recommends INTEGER,
+                    comments INTEGER,
+                    weight REAL NOT NULL DEFAULT 1.0,
+                    collected_at TEXT NOT NULL,
+                    first_seen_at TEXT,
+                    last_seen_at TEXT,
+                    seen_count INTEGER NOT NULL DEFAULT 1
+                );
+
+                CREATE TABLE IF NOT EXISTS article_scores (
+                    post_url TEXT PRIMARY KEY,
+                    scored_at TEXT NOT NULL,
+                    positive INTEGER NOT NULL,
+                    negative INTEGER NOT NULL,
+                    fomo INTEGER NOT NULL,
+                    fear INTEGER NOT NULL,
+                    distrust INTEGER NOT NULL,
+                    spam INTEGER NOT NULL,
+                    sentiment REAL NOT NULL,
+                    fomo_score REAL NOT NULL,
+                    risk_score REAL NOT NULL,
+                    text TEXT NOT NULL,
+                    FOREIGN KEY(post_url) REFERENCES posts(url)
+                );
+
+                CREATE TABLE IF NOT EXISTS trends (
+                    source TEXT NOT NULL,
+                    group_name TEXT NOT NULL,
+                    period TEXT NOT NULL,
+                    ratio REAL NOT NULL,
+                    keyword_group TEXT NOT NULL,
+                    demographic TEXT NOT NULL,
+                    collected_at TEXT NOT NULL,
+                    PRIMARY KEY(source, group_name, period, demographic)
+                );
+
+                CREATE TABLE IF NOT EXISTS daily_snapshots (
+                    day TEXT PRIMARY KEY,
+                    post_count INTEGER NOT NULL,
+                    new_post_count INTEGER NOT NULL,
+                    weighted_post_count REAL NOT NULL,
+                    new_weighted_post_count REAL NOT NULL,
+                    baseline_days INTEGER NOT NULL,
+                    baseline_estimated_days INTEGER NOT NULL DEFAULT 0,
+                    baseline_weighted_post_count REAL NOT NULL,
+                    mention_change_pct REAL NOT NULL,
+                    sentiment REAL NOT NULL,
+                    fomo_score REAL NOT NULL,
+                    fomo_change_pct REAL NOT NULL,
+                    risk_score REAL NOT NULL,
+                    risk_change_pct REAL NOT NULL,
+                    spam_rate REAL NOT NULL,
+                    attention_score REAL NOT NULL,
+                    trend_momentum REAL NOT NULL,
+                    index_score REAL NOT NULL,
+                    regime TEXT NOT NULL,
+                    is_estimated INTEGER NOT NULL DEFAULT 0,
+                    snapshot_source TEXT NOT NULL DEFAULT 'observed',
+                    created_at TEXT NOT NULL
+                );
+                """
+            )
+            self._ensure_column(con, "posts", "first_seen_at", "TEXT")
+            self._ensure_column(con, "posts", "last_seen_at", "TEXT")
+            self._ensure_column(con, "posts", "seen_count", "INTEGER NOT NULL DEFAULT 1")
+            self._ensure_column(
+                con,
+                "daily_snapshots",
+                "baseline_estimated_days",
+                "INTEGER NOT NULL DEFAULT 0",
+            )
+            self._ensure_column(
+                con,
+                "daily_snapshots",
+                "is_estimated",
+                "INTEGER NOT NULL DEFAULT 0",
+            )
+            self._ensure_column(
+                con,
+                "daily_snapshots",
+                "snapshot_source",
+                "TEXT NOT NULL DEFAULT 'observed'",
+            )
+            con.execute("UPDATE posts SET first_seen_at = COALESCE(first_seen_at, collected_at)")
+            con.execute("UPDATE posts SET last_seen_at = COALESCE(last_seen_at, collected_at)")
+            con.execute("UPDATE posts SET seen_count = COALESCE(seen_count, 1)")
+
+    def _ensure_column(
+        self,
+        con: sqlite3.Connection,
+        table: str,
+        column: str,
+        definition: str,
+    ) -> None:
+        columns = {row["name"] for row in con.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+    def upsert_posts(self, posts: Iterable[CommunityPost]) -> int:
+        rows = [post.normalized() for post in posts]
+        if not rows:
+            return 0
+        with self.connect() as con:
+            before = con.total_changes
+            con.executemany(
+                """
+                INSERT INTO posts (
+                    url, source, source_name, title, summary, published_at, keyword,
+                    author, views, recommends, comments, weight, collected_at,
+                    first_seen_at, last_seen_at, seen_count
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(url) DO UPDATE SET
+                    source=excluded.source,
+                    source_name=excluded.source_name,
+                    title=excluded.title,
+                    summary=excluded.summary,
+                    published_at=COALESCE(excluded.published_at, posts.published_at),
+                    keyword=COALESCE(excluded.keyword, posts.keyword),
+                    author=COALESCE(excluded.author, posts.author),
+                    views=COALESCE(excluded.views, posts.views),
+                    recommends=COALESCE(excluded.recommends, posts.recommends),
+                    comments=COALESCE(excluded.comments, posts.comments),
+                    weight=excluded.weight,
+                    collected_at=excluded.collected_at,
+                    first_seen_at=COALESCE(posts.first_seen_at, excluded.first_seen_at),
+                    last_seen_at=excluded.last_seen_at,
+                    seen_count=COALESCE(posts.seen_count, 0) + 1
+                """,
+                [
+                    (
+                        post.url,
+                        post.source,
+                        post.source_name,
+                        post.title,
+                        post.summary,
+                        post.published_at,
+                        post.keyword,
+                        post.author,
+                        post.views,
+                        post.recommends,
+                        post.comments,
+                        post.weight,
+                        post.collected_at,
+                        post.collected_at,
+                        post.collected_at,
+                        1,
+                    )
+                    for post in rows
+                ],
+            )
+            return con.total_changes - before
+
+    def upsert_scores(self, scores: Iterable[ArticleScore]) -> int:
+        rows = list(scores)
+        if not rows:
+            return 0
+        with self.connect() as con:
+            before = con.total_changes
+            con.executemany(
+                """
+                INSERT INTO article_scores (
+                    post_url, scored_at, positive, negative, fomo, fear, distrust, spam,
+                    sentiment, fomo_score, risk_score, text
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(post_url) DO UPDATE SET
+                    scored_at=excluded.scored_at,
+                    positive=excluded.positive,
+                    negative=excluded.negative,
+                    fomo=excluded.fomo,
+                    fear=excluded.fear,
+                    distrust=excluded.distrust,
+                    spam=excluded.spam,
+                    sentiment=excluded.sentiment,
+                    fomo_score=excluded.fomo_score,
+                    risk_score=excluded.risk_score,
+                    text=excluded.text
+                """,
+                [
+                    (
+                        score.post_url,
+                        score.scored_at,
+                        score.positive,
+                        score.negative,
+                        score.fomo,
+                        score.fear,
+                        score.distrust,
+                        score.spam,
+                        score.sentiment,
+                        score.fomo_score,
+                        score.risk_score,
+                        score.text,
+                    )
+                    for score in rows
+                ],
+            )
+            return con.total_changes - before
+
+    def upsert_trends(self, trends: Iterable[TrendPoint]) -> int:
+        rows = [trend.normalized() for trend in trends]
+        if not rows:
+            return 0
+        with self.connect() as con:
+            before = con.total_changes
+            con.executemany(
+                """
+                INSERT INTO trends (
+                    source, group_name, period, ratio, keyword_group, demographic, collected_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source, group_name, period, demographic) DO UPDATE SET
+                    ratio=excluded.ratio,
+                    keyword_group=excluded.keyword_group,
+                    collected_at=excluded.collected_at
+                """,
+                [
+                    (
+                        trend.source,
+                        trend.group_name,
+                        trend.period,
+                        trend.ratio,
+                        trend.keyword_group,
+                        trend.demographic,
+                        trend.collected_at,
+                    )
+                    for trend in rows
+                ],
+            )
+            return con.total_changes - before
+
+    def fetch_unscored_posts(self, *, limit: int = 1000) -> list[CommunityPost]:
+        with self.connect() as con:
+            rows = con.execute(
+                """
+                SELECT p.*
+                FROM posts p
+                LEFT JOIN article_scores s ON s.post_url = p.url
+                WHERE s.post_url IS NULL
+                ORDER BY p.collected_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._post_from_row(row) for row in rows]
+
+    def fetch_posts_for_scoring(self, *, limit: int = 3000) -> list[CommunityPost]:
+        with self.connect() as con:
+            rows = con.execute(
+                """
+                SELECT *
+                FROM posts
+                ORDER BY collected_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [self._post_from_row(row) for row in rows]
+
+    def fetch_daily_score_rows(self, *, day: str | None = None) -> list[dict[str, Any]]:
+        if day:
+            where_sql = "substr(p.last_seen_at, 1, 10) = ?"
+            params = (day,)
+        else:
+            where_sql = """
+                substr(p.last_seen_at, 1, 10) = (
+                    SELECT MAX(substr(last_seen_at, 1, 10)) FROM posts
+                )
+            """
+            params = ()
+        with self.connect() as con:
+            rows = con.execute(
+                f"""
+                SELECT
+                    substr(p.last_seen_at, 1, 10) AS day,
+                    p.source,
+                    p.source_name,
+                    p.title,
+                    p.url,
+                    p.weight,
+                    p.first_seen_at,
+                    p.last_seen_at,
+                    p.seen_count,
+                    CASE
+                        WHEN substr(p.first_seen_at, 1, 10) = substr(p.last_seen_at, 1, 10)
+                        THEN 1 ELSE 0
+                    END AS is_new,
+                    s.positive,
+                    s.negative,
+                    s.fomo,
+                    s.fear,
+                    s.distrust,
+                    s.spam,
+                    s.sentiment,
+                    s.fomo_score,
+                    s.risk_score
+                FROM posts p
+                JOIN article_scores s ON s.post_url = p.url
+                WHERE {where_sql}
+                ORDER BY p.collected_at DESC
+                """,
+                params,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def fetch_baseline_snapshots(self, *, day: str, limit: int = 30) -> list[dict[str, Any]]:
+        with self.connect() as con:
+            rows = con.execute(
+                """
+                SELECT
+                    *
+                FROM daily_snapshots
+                WHERE day < ?
+                ORDER BY day DESC
+                LIMIT ?
+                """,
+                (day, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def upsert_daily_snapshot(self, index: Any) -> None:
+        payload = self._snapshot_payload(index)
+        with self.connect() as con:
+            con.execute(
+                """
+                INSERT INTO daily_snapshots (
+                    day, post_count, new_post_count, weighted_post_count,
+                    new_weighted_post_count, baseline_days, baseline_estimated_days,
+                    baseline_weighted_post_count, mention_change_pct, sentiment,
+                    fomo_score, fomo_change_pct, risk_score, risk_change_pct,
+                    spam_rate, attention_score, trend_momentum, index_score,
+                    regime, is_estimated, snapshot_source, created_at
+                )
+                VALUES (
+                    :day, :post_count, :new_post_count, :weighted_post_count,
+                    :new_weighted_post_count, :baseline_days, :baseline_estimated_days,
+                    :baseline_weighted_post_count, :mention_change_pct, :sentiment,
+                    :fomo_score, :fomo_change_pct, :risk_score, :risk_change_pct,
+                    :spam_rate, :attention_score, :trend_momentum, :index_score,
+                    :regime, :is_estimated, :snapshot_source, :created_at
+                )
+                ON CONFLICT(day) DO UPDATE SET
+                    post_count=excluded.post_count,
+                    new_post_count=excluded.new_post_count,
+                    weighted_post_count=excluded.weighted_post_count,
+                    new_weighted_post_count=excluded.new_weighted_post_count,
+                    baseline_days=excluded.baseline_days,
+                    baseline_estimated_days=excluded.baseline_estimated_days,
+                    baseline_weighted_post_count=excluded.baseline_weighted_post_count,
+                    mention_change_pct=excluded.mention_change_pct,
+                    sentiment=excluded.sentiment,
+                    fomo_score=excluded.fomo_score,
+                    fomo_change_pct=excluded.fomo_change_pct,
+                    risk_score=excluded.risk_score,
+                    risk_change_pct=excluded.risk_change_pct,
+                    spam_rate=excluded.spam_rate,
+                    attention_score=excluded.attention_score,
+                    trend_momentum=excluded.trend_momentum,
+                    index_score=excluded.index_score,
+                    regime=excluded.regime,
+                    is_estimated=excluded.is_estimated,
+                    snapshot_source=excluded.snapshot_source,
+                    created_at=excluded.created_at
+                """,
+                payload,
+            )
+
+    def fetch_trend_period_rows(self) -> list[dict[str, Any]]:
+        with self.connect() as con:
+            rows = con.execute(
+                """
+                SELECT group_name, period, ratio
+                FROM trends
+                ORDER BY period ASC, group_name ASC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def fetch_trend_momentum(self) -> float:
+        with self.connect() as con:
+            rows = con.execute(
+                """
+                SELECT group_name, period, ratio
+                FROM trends
+                WHERE group_name IN ('crypto', 'stocks', 'fomo')
+                ORDER BY period DESC
+                """
+            ).fetchall()
+        if not rows:
+            return 0.0
+
+        today = date.today().isoformat()
+        periods = sorted({str(row["period"]) for row in rows if str(row["period"]) < today})
+        if len(periods) < 5:
+            return 0.0
+
+        latest_periods = set(periods[-3:])
+        previous_periods = set(periods[-17:-3])
+        latest = [float(row["ratio"]) for row in rows if str(row["period"]) in latest_periods]
+        previous = [float(row["ratio"]) for row in rows if str(row["period"]) in previous_periods]
+        if not latest or not previous:
+            return 0.0
+
+        latest_avg = sum(latest) / len(latest)
+        previous_avg = sum(previous) / len(previous)
+        return max(-1.0, min(1.0, (latest_avg - previous_avg) / max(previous_avg, 1.0)))
+
+    def fetch_top_rows(self, *, limit: int = 20, day: str | None = None) -> list[dict[str, Any]]:
+        if day:
+            where_sql = "substr(p.last_seen_at, 1, 10) = ?"
+            params: tuple[Any, ...] = (day, limit)
+        else:
+            where_sql = """
+                substr(p.last_seen_at, 1, 10) = (
+                    SELECT MAX(substr(last_seen_at, 1, 10)) FROM posts
+                )
+            """
+            params = (limit,)
+        with self.connect() as con:
+            rows = con.execute(
+                f"""
+                SELECT
+                    p.source_name,
+                    p.title,
+                    p.url,
+                    p.weight,
+                    p.first_seen_at,
+                    p.last_seen_at,
+                    s.positive,
+                    s.negative,
+                    s.fomo,
+                    s.fear,
+                    s.distrust,
+                    s.spam,
+                    s.sentiment,
+                    s.fomo_score,
+                    s.risk_score
+                FROM posts p
+                JOIN article_scores s ON s.post_url = p.url
+                WHERE {where_sql}
+                ORDER BY (s.positive + s.negative + s.fomo + s.fear + s.distrust) DESC,
+                         p.last_seen_at DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    @staticmethod
+    def _snapshot_payload(index: Any) -> dict[str, Any]:
+        if is_dataclass(index):
+            payload = {field.name: getattr(index, field.name) for field in fields(index)}
+        else:
+            payload = dict(index)
+        payload["created_at"] = utc_now_iso()
+        return payload
+
+    @staticmethod
+    def _post_from_row(row: sqlite3.Row) -> CommunityPost:
+        return CommunityPost(
+            source=row["source"],
+            source_name=row["source_name"],
+            title=row["title"],
+            summary=row["summary"],
+            url=row["url"],
+            published_at=row["published_at"],
+            keyword=row["keyword"],
+            author=row["author"],
+            views=row["views"],
+            recommends=row["recommends"],
+            comments=row["comments"],
+            weight=row["weight"],
+            collected_at=row["collected_at"],
+        )

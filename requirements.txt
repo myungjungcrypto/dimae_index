@@ -1,0 +1,4 @@
+# Core pipeline uses only the Python standard library.
+# Optional dashboard:
+streamlit>=1.34
+
