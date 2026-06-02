@@ -105,6 +105,7 @@ def main() -> None:
             include_trends=not args.no_trends,
             strict=args.strict,
             verbose=args.verbose,
+            use_runtime_settings=not args.quick,
         )
         print(f"posts_collected: {result.posts_collected}")
         print(f"trends_collected: {result.trends_collected}")
@@ -130,7 +131,12 @@ def main() -> None:
 
     if args.command == "run":
         config = maybe_quick_config(config, args.quick)
-        result = run_daily(config, strict=args.strict, verbose=args.verbose)
+        result = run_daily(
+            config,
+            strict=args.strict,
+            verbose=args.verbose,
+            use_runtime_settings=not args.quick,
+        )
         if result.daily_index is None:
             raise RuntimeError("index was not built")
         print(f"posts_collected: {result.posts_collected}")

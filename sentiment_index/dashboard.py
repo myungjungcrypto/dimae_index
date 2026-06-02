@@ -4,9 +4,11 @@ import html
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
-from .pipeline import calculate_index
+from .config import PipelineConfig
+from .pipeline import build_index, calculate_index, score_posts
+from .settings import add_term, load_settings, remove_term
 from .storage import SentimentStore
 
 
@@ -24,6 +26,34 @@ def serve_dashboard(db_path: Path, *, host: str = "127.0.0.1", port: int = 8765)
                 self._send_html(render_dashboard(store))
                 return
             self.send_error(404)
+
+        def do_POST(self) -> None:
+            path = urlparse(self.path).path
+            if path not in {"/settings/add", "/settings/remove"}:
+                self.send_error(404)
+                return
+
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = parse_qs(self.rfile.read(length).decode("utf-8"))
+            list_name = _first_form_value(payload, "list")
+            value = _first_form_value(payload, "value")
+
+            try:
+                if path == "/settings/add":
+                    add_term(list_name, value)
+                else:
+                    remove_term(list_name, value)
+                if list_name == "fomo":
+                    config = PipelineConfig(db_path=store.path)
+                    score_posts(config, rescore=True)
+                    build_index(config)
+            except ValueError as exc:
+                self.send_error(400, str(exc))
+                return
+
+            self.send_response(303)
+            self.send_header("Location", "/#settings")
+            self.end_headers()
 
         def log_message(self, format: str, *args: object) -> None:
             return
@@ -75,11 +105,13 @@ def build_summary(store: SentimentStore) -> dict[str, object]:
 def render_dashboard(store: SentimentStore) -> str:
     index = calculate_index(store, persist=False)
     top_rows = store.fetch_top_rows(limit=20, day=index.day)
+    settings = load_settings()
     score_color = score_to_color(index.index_score)
     baseline_note = baseline_label(index.baseline_days, index.baseline_estimated_days)
     metric_notes = build_metric_notes()
     explanation_html = render_explanations()
     threshold_html = render_thresholds(index)
+    settings_html = render_settings(settings)
     rows_html = "\n".join(render_post_row(row) for row in top_rows)
     if not rows_html:
         rows_html = '<tr><td colspan="5" class="empty">아직 점수화된 글이 없습니다.</td></tr>'
@@ -272,6 +304,77 @@ def render_dashboard(store: SentimentStore) -> str:
       color: var(--ink);
       font-size: 13px;
     }}
+    .settings {{
+      margin: 0 0 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }}
+    .settings h2 {{
+      margin: 0 0 12px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }}
+    .settings-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }}
+    .settings-group h3 {{
+      margin: 0 0 10px;
+      color: var(--ink);
+      font-size: 13px;
+    }}
+    .term-list {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 10px;
+    }}
+    .term-list form {{
+      margin: 0;
+    }}
+    .term-chip {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f8fafc;
+      color: var(--ink);
+      font-size: 13px;
+      cursor: pointer;
+    }}
+    .term-chip b {{
+      margin-left: 6px;
+      color: var(--muted);
+      font-weight: 700;
+    }}
+    .settings-add {{
+      display: flex;
+      gap: 8px;
+    }}
+    .settings-add input {{
+      min-width: 0;
+      flex: 1;
+      height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 10px;
+      font: inherit;
+    }}
+    .settings-add button {{
+      height: 34px;
+      border: 1px solid #c7d2fe;
+      border-radius: 6px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-weight: 700;
+      padding: 0 12px;
+      cursor: pointer;
+    }}
     table {{
       width: 100%;
       border-collapse: collapse;
@@ -313,6 +416,7 @@ def render_dashboard(store: SentimentStore) -> str:
       .metrics {{ grid-template-columns: 1fr 1fr; }}
       .explain-grid {{ grid-template-columns: 1fr; }}
       .threshold-grid {{ grid-template-columns: 1fr; }}
+      .settings-grid {{ grid-template-columns: 1fr; }}
       .score {{ grid-column: 1 / -1; }}
       table {{ table-layout: auto; }}
       th:nth-child(3), td:nth-child(3),
@@ -347,6 +451,7 @@ def render_dashboard(store: SentimentStore) -> str:
     </section>
     {explanation_html}
     {threshold_html}
+    {settings_html}
     <section class="table-wrap">
       <table>
         <thead>
@@ -368,6 +473,11 @@ def render_dashboard(store: SentimentStore) -> str:
 </html>"""
 
 
+def _first_form_value(payload: dict[str, list[str]], name: str) -> str:
+    values = payload.get(name)
+    return values[0].strip() if values else ""
+
+
 def render_post_row(row: dict[str, object]) -> str:
     source = html.escape(str(row["source_name"]))
     title = html.escape(str(row["title"]))
@@ -383,6 +493,66 @@ def render_post_row(row: dict[str, object]) -> str:
         f"<td>{fomo:.2f}</td>"
         f"<td>{risk:.2f}</td>"
         "</tr>"
+    )
+
+
+def render_settings(settings: dict[str, object]) -> str:
+    lexicon = settings.get("lexicon", {})
+    fomo_terms = lexicon.get("fomo", []) if isinstance(lexicon, dict) else []
+    return (
+        '<section id="settings" class="settings">'
+        "<h2>Settings</h2>"
+        '<div class="settings-grid">'
+        + render_term_editor(
+            "Search Keywords",
+            "keywords",
+            settings.get("keywords", []),
+            "검색어 추가",
+        )
+        + render_term_editor(
+            "FOMO Dictionary",
+            "fomo",
+            fomo_terms,
+            "FOMO 단어 추가",
+        )
+        + "</div>"
+        "</section>"
+    )
+
+
+def render_term_editor(
+    title: str,
+    list_name: str,
+    terms: object,
+    placeholder: str,
+) -> str:
+    term_list = [str(term) for term in terms] if isinstance(terms, list) else []
+    chips = "\n".join(render_term_chip(list_name, term) for term in term_list)
+    if not chips:
+        chips = '<span class="signal info">비어 있음</span>'
+    return (
+        '<div class="settings-group">'
+        f"<h3>{html.escape(title)} ({len(term_list)})</h3>"
+        f'<div class="term-list">{chips}</div>'
+        '<form class="settings-add" method="post" action="/settings/add">'
+        f'<input type="hidden" name="list" value="{html.escape(list_name, quote=True)}">'
+        f'<input name="value" placeholder="{html.escape(placeholder, quote=True)}" autocomplete="off">'
+        "<button type=\"submit\">추가</button>"
+        "</form>"
+        "</div>"
+    )
+
+
+def render_term_chip(list_name: str, term: str) -> str:
+    escaped_list = html.escape(list_name, quote=True)
+    escaped_term = html.escape(term, quote=True)
+    visible_term = html.escape(term)
+    return (
+        '<form method="post" action="/settings/remove">'
+        f'<input type="hidden" name="list" value="{escaped_list}">'
+        f'<input type="hidden" name="value" value="{escaped_term}">'
+        f'<button class="term-chip" type="submit">{visible_term}<b>삭제</b></button>'
+        "</form>"
     )
 
 

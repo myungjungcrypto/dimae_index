@@ -86,6 +86,11 @@ python3 -m sentiment_index.cli dashboard
 
 브라우저에서 `http://127.0.0.1:8765`를 엽니다.
 
+대시보드의 `Settings`에서 검색 키워드와 FOMO 사전을 추가/삭제할 수 있습니다. 변경값은 `data/settings.json`에 저장됩니다.
+
+- 검색 키워드 변경: 다음 수집부터 적용
+- FOMO 사전 변경: 저장 즉시 기존 글을 재점수화
+
 하루 2회 자동 갱신 프로세스를 켜려면:
 
 ```bash

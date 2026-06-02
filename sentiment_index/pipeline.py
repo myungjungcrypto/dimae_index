@@ -16,6 +16,7 @@ from .http import HttpError
 from .models import CommunityPost, TrendPoint, kst_today, utc_now_iso
 from .naver import MissingNaverCredentials, NaverClient
 from .scoring import DailyIndex, build_daily_index, clamp, score_post
+from .settings import load_runtime_config, load_runtime_lexicon
 from .storage import SentimentStore
 
 
@@ -55,8 +56,11 @@ def collect_sources(
     include_trends: bool = True,
     strict: bool = False,
     verbose: bool = False,
+    use_runtime_settings: bool = True,
 ) -> PipelineResult:
     load_env_file()
+    if use_runtime_settings:
+        config = load_runtime_config(config)
     store = initialize_store(config)
     result = PipelineResult()
     posts: list[CommunityPost] = []
@@ -113,7 +117,8 @@ def collect_sources(
 def score_posts(config: PipelineConfig = DEFAULT_CONFIG, *, rescore: bool = True) -> PipelineResult:
     store = initialize_store(config)
     posts = store.fetch_posts_for_scoring() if rescore else store.fetch_unscored_posts()
-    scores = [score_post(post) for post in posts]
+    lexicon = load_runtime_lexicon()
+    scores = [score_post(post, lexicon=lexicon) for post in posts]
     return PipelineResult(posts_scored=store.upsert_scores(scores))
 
 
@@ -197,12 +202,14 @@ def run_daily(
     include_dcinside: bool = True,
     strict: bool = False,
     verbose: bool = False,
+    use_runtime_settings: bool = True,
 ) -> PipelineResult:
     result = collect_sources(
         config,
         include_dcinside=include_dcinside,
         strict=strict,
         verbose=verbose,
+        use_runtime_settings=use_runtime_settings,
     )
     scored = score_posts(config, rescore=True)
     indexed = build_index(config)
