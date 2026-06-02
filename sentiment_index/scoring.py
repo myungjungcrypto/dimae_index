@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import date
 
 from .config import DEFAULT_LEXICON, Lexicon
-from .models import ArticleScore, CommunityPost, utc_now_iso
+from .models import ArticleScore, CommunityPost, kst_today_iso, utc_now_iso
 
 
 def clamp(value: float, minimum: float = 0.0, maximum: float = 100.0) -> float:
@@ -80,7 +79,7 @@ def build_daily_index(
     trend_momentum: float = 0.0,
     min_baseline_days: int = 3,
 ) -> DailyIndex:
-    today = date.today().isoformat()
+    today = kst_today_iso()
     baseline = baseline_snapshots or []
     if not rows:
         return DailyIndex(

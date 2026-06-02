@@ -67,7 +67,7 @@ pm2 list
 Services:
 
 - `dimae-index-dashboard`: dashboard at port `8765`
-- `dimae-index-hourly-update`: hourly updater
+- `dimae-index-hourly-update`: hourly updater, grouped by KST day
 
 ## 6. Enable PM2 on reboot
 

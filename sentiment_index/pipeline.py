@@ -4,7 +4,7 @@ import os
 import sys
 import math
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from statistics import median
 from time import sleep
@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from .config import DEFAULT_CONFIG, PipelineConfig
 from .dcinside import DcinsideClient
 from .http import HttpError
-from .models import CommunityPost, TrendPoint, utc_now_iso
+from .models import CommunityPost, TrendPoint, kst_today, utc_now_iso
 from .naver import MissingNaverCredentials, NaverClient
 from .scoring import DailyIndex, build_daily_index, clamp, score_post
 from .storage import SentimentStore
@@ -151,7 +151,7 @@ def backfill_datalab_baseline(
         naver = NaverClient()
         if naver.configured:
             try:
-                end = date.today()
+                end = kst_today()
                 start = end - timedelta(days=days)
                 trends = naver.collect_default_trends(
                     start_date=start.isoformat(),

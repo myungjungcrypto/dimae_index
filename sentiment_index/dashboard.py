@@ -324,7 +324,7 @@ def render_dashboard(store: SentimentStore) -> str:
 <body>
   <header>
     <h1>Dimaejipyo Sentiment Dashboard</h1>
-    <div class="sub">Latest scored day: {html.escape(index.day)} · {html.escape(baseline_note)} · auto-refresh 60s</div>
+    <div class="sub">Latest KST day: {html.escape(index.day)} · {html.escape(baseline_note)} · auto-refresh 60s</div>
   </header>
   <main>
     <section class="metrics">
@@ -389,8 +389,8 @@ def render_post_row(row: dict[str, object]) -> str:
 def build_metric_notes() -> dict[str, str]:
     return {
         "index_score": "기준선 대비 언급량, FOMO, 리스크, 검색 모멘텀을 합친 0~100 점수.",
-        "posts": "오늘 마지막으로 발견된 전체 글 수입니다. 검색 결과 재발견 글도 포함됩니다.",
-        "new_posts": "DB에서 오늘 처음 본 URL 수입니다. 며칠 쌓인 뒤 변화 판단에 가장 중요합니다.",
+        "posts": "KST 기준 해당 일자에 마지막으로 포착된 전체 글 수입니다. 검색 결과 재발견 글도 포함됩니다.",
+        "new_posts": "KST 기준 해당 일자에 처음 포착됐고, 카페 글번호가 이전 최고값보다 큰 URL 수입니다.",
         "baseline": "비교에 쓰는 과거 스냅샷 일수입니다. 3일 미만이면 판단을 보류합니다.",
         "estimated": "데이터랩으로 추정한 과거 기준선 일수입니다. 실제 관측값이 쌓이면 비중이 낮아집니다.",
         "mentions_delta": "신규 언급량이 기준선보다 얼마나 늘거나 줄었는지입니다.",
@@ -406,7 +406,7 @@ def render_explanations() -> str:
     items = [
         ("Index Score", "60 이상은 위험 선호, 75 이상은 과열 후보입니다. 30 이하는 패닉 후보입니다."),
         ("Regime", "baseline_building은 과거 기준선 부족, risk_on은 관심/위험선호 우세, euphoria는 과열 후보입니다."),
-        ("Mentions Δ", "커뮤니티 신규 언급량의 변화입니다. 크게 양수면 관심 급증, 음수면 관심 둔화입니다."),
+        ("Mentions Δ", "커뮤니티 신규 포착 언급량의 변화입니다. 크게 양수면 관심 급증, 음수면 관심 둔화입니다."),
         ("FOMO Δ", "과열 언어가 평소보다 늘었는지 봅니다. 값이 커도 FOMO 원점수가 낮으면 약한 신호입니다."),
         ("Risk Δ", "공포/불신 언어가 평소보다 늘었는지 봅니다. 급등하면 리스크 오프나 패닉 후보입니다."),
         ("Estimated baseline", "네이버 카페 과거 글 작성일을 완벽히 복원하기 어려워, 데이터랩 30일 추이로 만든 초기 기준선입니다."),

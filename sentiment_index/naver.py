@@ -8,7 +8,7 @@ from html.parser import HTMLParser
 
 from .config import CafeTarget, NaverConfig
 from .http import request_json
-from .models import CommunityPost, TrendPoint
+from .models import CommunityPost, TrendPoint, kst_today
 
 
 class MissingNaverCredentials(RuntimeError):
@@ -182,7 +182,7 @@ class NaverClient:
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> list[TrendPoint]:
-        end = date.fromisoformat(end_date) if end_date else date.today()
+        end = date.fromisoformat(end_date) if end_date else kst_today()
         start = date.fromisoformat(start_date) if start_date else end - timedelta(days=30)
         groups: list[dict[str, list[str] | str]] = [
             {

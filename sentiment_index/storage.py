@@ -3,11 +3,21 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Iterable
 from dataclasses import fields, is_dataclass
-from datetime import date
 from pathlib import Path
 from typing import Any
 
-from .models import ArticleScore, CommunityPost, TrendPoint, utc_now_iso
+from .models import (
+    ArticleScore,
+    CommunityPost,
+    TrendPoint,
+    kst_today_iso,
+    parse_article_identity,
+    utc_now_iso,
+)
+
+
+def _kst_day_sql(column: str) -> str:
+    return f"substr(datetime({column}, '+9 hours'), 1, 10)"
 
 
 class SentimentStore:
@@ -40,7 +50,10 @@ class SentimentStore:
                     collected_at TEXT NOT NULL,
                     first_seen_at TEXT,
                     last_seen_at TEXT,
-                    seen_count INTEGER NOT NULL DEFAULT 1
+                    seen_count INTEGER NOT NULL DEFAULT 1,
+                    article_group TEXT,
+                    article_id INTEGER,
+                    sequence_new INTEGER NOT NULL DEFAULT 1
                 );
 
                 CREATE TABLE IF NOT EXISTS article_scores (
@@ -99,6 +112,9 @@ class SentimentStore:
             self._ensure_column(con, "posts", "first_seen_at", "TEXT")
             self._ensure_column(con, "posts", "last_seen_at", "TEXT")
             self._ensure_column(con, "posts", "seen_count", "INTEGER NOT NULL DEFAULT 1")
+            self._ensure_column(con, "posts", "article_group", "TEXT")
+            self._ensure_column(con, "posts", "article_id", "INTEGER")
+            self._ensure_column(con, "posts", "sequence_new", "INTEGER NOT NULL DEFAULT 1")
             self._ensure_column(
                 con,
                 "daily_snapshots",
@@ -120,6 +136,8 @@ class SentimentStore:
             con.execute("UPDATE posts SET first_seen_at = COALESCE(first_seen_at, collected_at)")
             con.execute("UPDATE posts SET last_seen_at = COALESCE(last_seen_at, collected_at)")
             con.execute("UPDATE posts SET seen_count = COALESCE(seen_count, 1)")
+            self._backfill_article_identity(con)
+            self._rebuild_sequence_new_flags(con)
 
     def _ensure_column(
         self,
@@ -137,15 +155,17 @@ class SentimentStore:
         if not rows:
             return 0
         with self.connect() as con:
+            max_article_ids = self._fetch_max_article_ids(con, rows)
             before = con.total_changes
             con.executemany(
                 """
                 INSERT INTO posts (
                     url, source, source_name, title, summary, published_at, keyword,
                     author, views, recommends, comments, weight, collected_at,
-                    first_seen_at, last_seen_at, seen_count
+                    first_seen_at, last_seen_at, seen_count, article_group, article_id,
+                    sequence_new
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(url) DO UPDATE SET
                     source=excluded.source,
                     source_name=excluded.source_name,
@@ -161,7 +181,10 @@ class SentimentStore:
                     collected_at=excluded.collected_at,
                     first_seen_at=COALESCE(posts.first_seen_at, excluded.first_seen_at),
                     last_seen_at=excluded.last_seen_at,
-                    seen_count=COALESCE(posts.seen_count, 0) + 1
+                    seen_count=COALESCE(posts.seen_count, 0) + 1,
+                    article_group=COALESCE(posts.article_group, excluded.article_group),
+                    article_id=COALESCE(posts.article_id, excluded.article_id),
+                    sequence_new=posts.sequence_new
                 """,
                 [
                     (
@@ -181,6 +204,9 @@ class SentimentStore:
                         post.collected_at,
                         post.collected_at,
                         1,
+                        post.article_group,
+                        post.article_id,
+                        self._is_sequence_new(post, max_article_ids),
                     )
                     for post in rows
                 ],
@@ -294,13 +320,15 @@ class SentimentStore:
         return [self._post_from_row(row) for row in rows]
 
     def fetch_daily_score_rows(self, *, day: str | None = None) -> list[dict[str, Any]]:
+        last_seen_day = _kst_day_sql("p.last_seen_at")
+        first_seen_day = _kst_day_sql("p.first_seen_at")
         if day:
-            where_sql = "substr(p.last_seen_at, 1, 10) = ?"
+            where_sql = f"{last_seen_day} = ?"
             params = (day,)
         else:
-            where_sql = """
-                substr(p.last_seen_at, 1, 10) = (
-                    SELECT MAX(substr(last_seen_at, 1, 10)) FROM posts
+            where_sql = f"""
+                {last_seen_day} = (
+                    SELECT MAX({_kst_day_sql("last_seen_at")}) FROM posts
                 )
             """
             params = ()
@@ -308,7 +336,7 @@ class SentimentStore:
             rows = con.execute(
                 f"""
                 SELECT
-                    substr(p.last_seen_at, 1, 10) AS day,
+                    {last_seen_day} AS day,
                     p.source,
                     p.source_name,
                     p.title,
@@ -317,8 +345,12 @@ class SentimentStore:
                     p.first_seen_at,
                     p.last_seen_at,
                     p.seen_count,
+                    p.article_group,
+                    p.article_id,
+                    p.sequence_new,
                     CASE
-                        WHEN substr(p.first_seen_at, 1, 10) = substr(p.last_seen_at, 1, 10)
+                        WHEN {first_seen_day} = {last_seen_day}
+                         AND (p.article_id IS NULL OR p.sequence_new = 1)
                         THEN 1 ELSE 0
                     END AS is_new,
                     s.positive,
@@ -425,7 +457,7 @@ class SentimentStore:
         if not rows:
             return 0.0
 
-        today = date.today().isoformat()
+        today = kst_today_iso()
         periods = sorted({str(row["period"]) for row in rows if str(row["period"]) < today})
         if len(periods) < 5:
             return 0.0
@@ -442,13 +474,14 @@ class SentimentStore:
         return max(-1.0, min(1.0, (latest_avg - previous_avg) / max(previous_avg, 1.0)))
 
     def fetch_top_rows(self, *, limit: int = 20, day: str | None = None) -> list[dict[str, Any]]:
+        last_seen_day = _kst_day_sql("p.last_seen_at")
         if day:
-            where_sql = "substr(p.last_seen_at, 1, 10) = ?"
+            where_sql = f"{last_seen_day} = ?"
             params: tuple[Any, ...] = (day, limit)
         else:
-            where_sql = """
-                substr(p.last_seen_at, 1, 10) = (
-                    SELECT MAX(substr(last_seen_at, 1, 10)) FROM posts
+            where_sql = f"""
+                {last_seen_day} = (
+                    SELECT MAX({_kst_day_sql("last_seen_at")}) FROM posts
                 )
             """
             params = (limit,)
@@ -462,6 +495,9 @@ class SentimentStore:
                     p.weight,
                     p.first_seen_at,
                     p.last_seen_at,
+                    p.article_group,
+                    p.article_id,
+                    p.sequence_new,
                     s.positive,
                     s.negative,
                     s.fomo,
@@ -507,4 +543,89 @@ class SentimentStore:
             comments=row["comments"],
             weight=row["weight"],
             collected_at=row["collected_at"],
+            article_group=row["article_group"] if "article_group" in row.keys() else None,
+            article_id=row["article_id"] if "article_id" in row.keys() else None,
         )
+
+    def _backfill_article_identity(self, con: sqlite3.Connection) -> None:
+        rows = con.execute(
+            """
+            SELECT url, source, source_name
+            FROM posts
+            WHERE article_group IS NULL OR article_id IS NULL
+            """
+        ).fetchall()
+        for row in rows:
+            article_group, article_id = parse_article_identity(
+                source=row["source"],
+                source_name=row["source_name"],
+                url=row["url"],
+            )
+            if article_group is None or article_id is None:
+                continue
+            con.execute(
+                """
+                UPDATE posts
+                SET article_group = ?, article_id = ?
+                WHERE url = ?
+                """,
+                (article_group, article_id, row["url"]),
+            )
+
+    def _rebuild_sequence_new_flags(self, con: sqlite3.Connection) -> None:
+        rows = con.execute(
+            """
+            SELECT url, article_group, article_id
+            FROM posts
+            WHERE article_group IS NOT NULL
+              AND article_id IS NOT NULL
+            ORDER BY article_group ASC, first_seen_at ASC, article_id ASC
+            """
+        ).fetchall()
+        current_group: str | None = None
+        max_seen: int | None = None
+        updates: list[tuple[int, str]] = []
+        for row in rows:
+            group = str(row["article_group"])
+            article_id = int(row["article_id"])
+            if group != current_group:
+                current_group = group
+                max_seen = None
+            sequence_new = 1 if max_seen is None or article_id > max_seen else 0
+            max_seen = article_id if max_seen is None else max(max_seen, article_id)
+            updates.append((sequence_new, row["url"]))
+        con.executemany("UPDATE posts SET sequence_new = ? WHERE url = ?", updates)
+
+    @staticmethod
+    def _fetch_max_article_ids(
+        con: sqlite3.Connection,
+        posts: list[CommunityPost],
+    ) -> dict[str, int]:
+        groups = sorted({post.article_group for post in posts if post.article_group})
+        if not groups:
+            return {}
+        placeholders = ",".join("?" for _ in groups)
+        rows = con.execute(
+            f"""
+            SELECT article_group, MAX(article_id) AS max_article_id
+            FROM posts
+            WHERE article_group IN ({placeholders})
+              AND article_id IS NOT NULL
+            GROUP BY article_group
+            """,
+            groups,
+        ).fetchall()
+        return {
+            str(row["article_group"]): int(row["max_article_id"])
+            for row in rows
+            if row["max_article_id"] is not None
+        }
+
+    @staticmethod
+    def _is_sequence_new(post: CommunityPost, max_article_ids: dict[str, int]) -> int:
+        if post.article_group is None or post.article_id is None:
+            return 1
+        previous_max = max_article_ids.get(post.article_group)
+        if previous_max is None:
+            return 1
+        return 1 if post.article_id > previous_max else 0
