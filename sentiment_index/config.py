@@ -37,6 +37,7 @@ class DcGallery:
 class PipelineConfig:
     db_path: Path = DEFAULT_DB_PATH
     keywords: tuple[str, ...] = (
+        "코인",
         "비트코인",
         "이더리움",
         "리플",
@@ -57,6 +58,8 @@ class PipelineConfig:
         "엔비디아",
         "테슬라",
         "삼성전자",
+        "하이닉스",
+        "SK하이닉스",
         "반도체",
         "2차전지",
     )

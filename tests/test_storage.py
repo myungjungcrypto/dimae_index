@@ -23,23 +23,28 @@ class StorageTest(unittest.TestCase):
             store = SentimentStore(Path(tmp) / "sentiment.sqlite3")
             store.initialize()
 
-            first = self._post(
+            previous = self._post(
                 "http://cafe.naver.com/dieselmania/100",
-                "처음 본 최신 주식 글",
-                "2026-06-02T18:00:00+00:00",
+                "전날 최고 번호 주식 글",
+                "2026-06-01T18:00:00+00:00",
             )
             lower_late = self._post(
                 "http://cafe.naver.com/dieselmania/99",
                 "뒤늦게 잡힌 낮은 번호 주식 글",
+                "2026-06-02T18:00:00+00:00",
+            )
+            same_day_lower_than_highest = self._post(
+                "http://cafe.naver.com/dieselmania/101",
+                "오늘 신규지만 최고 번호보다 낮게 늦게 발견된 글",
                 "2026-06-02T18:10:00+00:00",
             )
             higher_late = self._post(
-                "http://cafe.naver.com/dieselmania/101",
+                "http://cafe.naver.com/dieselmania/102",
                 "새로 올라온 높은 번호 주식 글",
                 "2026-06-02T18:20:00+00:00",
             )
 
-            for post in (first, lower_late, higher_late):
+            for post in (previous, higher_late, lower_late, same_day_lower_than_highest):
                 store.upsert_posts([post])
                 store.upsert_scores([score_post(post)])
 
@@ -48,10 +53,10 @@ class StorageTest(unittest.TestCase):
             self.assertEqual(len(rows), 3)
             self.assertEqual({row["day"] for row in rows}, {"2026-06-03"})
             by_url = {row["url"]: row for row in rows}
-            self.assertEqual(by_url[first.url]["is_new"], 1)
             self.assertEqual(by_url[lower_late.url]["is_new"], 0)
+            self.assertEqual(by_url[same_day_lower_than_highest.url]["is_new"], 1)
             self.assertEqual(by_url[higher_late.url]["is_new"], 1)
-            self.assertEqual(store.fetch_daily_score_rows(day="2026-06-02"), [])
+            self.assertEqual(len(store.fetch_daily_score_rows(day="2026-06-02")), 1)
 
     def _post(self, url: str, title: str, collected_at: str) -> CommunityPost:
         return CommunityPost(

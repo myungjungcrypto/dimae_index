@@ -322,6 +322,13 @@ class SentimentStore:
     def fetch_daily_score_rows(self, *, day: str | None = None) -> list[dict[str, Any]]:
         last_seen_day = _kst_day_sql("p.last_seen_at")
         first_seen_day = _kst_day_sql("p.first_seen_at")
+        previous_article_max_sql = f"""
+            SELECT MAX(prev.article_id)
+            FROM posts prev
+            WHERE prev.article_group = p.article_group
+              AND prev.article_id IS NOT NULL
+              AND {_kst_day_sql("prev.first_seen_at")} < {last_seen_day}
+        """
         if day:
             where_sql = f"{last_seen_day} = ?"
             params = (day,)
@@ -350,7 +357,11 @@ class SentimentStore:
                     p.sequence_new,
                     CASE
                         WHEN {first_seen_day} = {last_seen_day}
-                         AND (p.article_id IS NULL OR p.sequence_new = 1)
+                         AND (
+                            p.article_id IS NULL
+                            OR p.article_group IS NULL
+                            OR p.article_id > COALESCE(({previous_article_max_sql}), -1)
+                         )
                         THEN 1 ELSE 0
                     END AS is_new,
                     s.positive,
