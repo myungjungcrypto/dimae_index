@@ -10,6 +10,7 @@ from .models import (
     ArticleScore,
     CommunityPost,
     TrendPoint,
+    kst_hour_iso,
     kst_today_iso,
     parse_article_identity,
     utc_now_iso,
@@ -85,6 +86,32 @@ class SentimentStore:
 
                 CREATE TABLE IF NOT EXISTS daily_snapshots (
                     day TEXT PRIMARY KEY,
+                    post_count INTEGER NOT NULL,
+                    new_post_count INTEGER NOT NULL,
+                    weighted_post_count REAL NOT NULL,
+                    new_weighted_post_count REAL NOT NULL,
+                    baseline_days INTEGER NOT NULL,
+                    baseline_estimated_days INTEGER NOT NULL DEFAULT 0,
+                    baseline_weighted_post_count REAL NOT NULL,
+                    mention_change_pct REAL NOT NULL,
+                    sentiment REAL NOT NULL,
+                    fomo_score REAL NOT NULL,
+                    fomo_change_pct REAL NOT NULL,
+                    risk_score REAL NOT NULL,
+                    risk_change_pct REAL NOT NULL,
+                    spam_rate REAL NOT NULL,
+                    attention_score REAL NOT NULL,
+                    trend_momentum REAL NOT NULL,
+                    index_score REAL NOT NULL,
+                    regime TEXT NOT NULL,
+                    is_estimated INTEGER NOT NULL DEFAULT 0,
+                    snapshot_source TEXT NOT NULL DEFAULT 'observed',
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS hourly_snapshots (
+                    snapshot_at TEXT PRIMARY KEY,
+                    day TEXT NOT NULL,
                     post_count INTEGER NOT NULL,
                     new_post_count INTEGER NOT NULL,
                     weighted_post_count REAL NOT NULL,
@@ -443,6 +470,68 @@ class SentimentStore:
                 """,
                 payload,
             )
+
+    def upsert_hourly_snapshot(self, index: Any, *, snapshot_at: str | None = None) -> None:
+        payload = self._snapshot_payload(index)
+        payload["snapshot_at"] = snapshot_at or kst_hour_iso()
+        with self.connect() as con:
+            con.execute(
+                """
+                INSERT INTO hourly_snapshots (
+                    snapshot_at, day, post_count, new_post_count, weighted_post_count,
+                    new_weighted_post_count, baseline_days, baseline_estimated_days,
+                    baseline_weighted_post_count, mention_change_pct, sentiment,
+                    fomo_score, fomo_change_pct, risk_score, risk_change_pct,
+                    spam_rate, attention_score, trend_momentum, index_score,
+                    regime, is_estimated, snapshot_source, created_at
+                )
+                VALUES (
+                    :snapshot_at, :day, :post_count, :new_post_count, :weighted_post_count,
+                    :new_weighted_post_count, :baseline_days, :baseline_estimated_days,
+                    :baseline_weighted_post_count, :mention_change_pct, :sentiment,
+                    :fomo_score, :fomo_change_pct, :risk_score, :risk_change_pct,
+                    :spam_rate, :attention_score, :trend_momentum, :index_score,
+                    :regime, :is_estimated, :snapshot_source, :created_at
+                )
+                ON CONFLICT(snapshot_at) DO UPDATE SET
+                    day=excluded.day,
+                    post_count=excluded.post_count,
+                    new_post_count=excluded.new_post_count,
+                    weighted_post_count=excluded.weighted_post_count,
+                    new_weighted_post_count=excluded.new_weighted_post_count,
+                    baseline_days=excluded.baseline_days,
+                    baseline_estimated_days=excluded.baseline_estimated_days,
+                    baseline_weighted_post_count=excluded.baseline_weighted_post_count,
+                    mention_change_pct=excluded.mention_change_pct,
+                    sentiment=excluded.sentiment,
+                    fomo_score=excluded.fomo_score,
+                    fomo_change_pct=excluded.fomo_change_pct,
+                    risk_score=excluded.risk_score,
+                    risk_change_pct=excluded.risk_change_pct,
+                    spam_rate=excluded.spam_rate,
+                    attention_score=excluded.attention_score,
+                    trend_momentum=excluded.trend_momentum,
+                    index_score=excluded.index_score,
+                    regime=excluded.regime,
+                    is_estimated=excluded.is_estimated,
+                    snapshot_source=excluded.snapshot_source,
+                    created_at=excluded.created_at
+                """,
+                payload,
+            )
+
+    def fetch_hourly_snapshots(self, *, limit: int = 24) -> list[dict[str, Any]]:
+        with self.connect() as con:
+            rows = con.execute(
+                """
+                SELECT *
+                FROM hourly_snapshots
+                ORDER BY snapshot_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def fetch_trend_period_rows(self) -> list[dict[str, Any]]:
         with self.connect() as con:

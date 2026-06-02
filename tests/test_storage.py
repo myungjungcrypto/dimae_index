@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from sentiment_index.models import CommunityPost, parse_article_identity
-from sentiment_index.scoring import score_post
+from sentiment_index.scoring import build_daily_index, score_post
 from sentiment_index.storage import SentimentStore
 
 
@@ -57,6 +57,43 @@ class StorageTest(unittest.TestCase):
             self.assertEqual(by_url[same_day_lower_than_highest.url]["is_new"], 1)
             self.assertEqual(by_url[higher_late.url]["is_new"], 1)
             self.assertEqual(len(store.fetch_daily_score_rows(day="2026-06-02")), 1)
+
+    def test_hourly_snapshot_is_upserted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SentimentStore(Path(tmp) / "sentiment.sqlite3")
+            store.initialize()
+            index = build_daily_index(
+                [
+                    {
+                        "day": "2026-06-03",
+                        "weight": 1.0,
+                        "is_new": 1,
+                        "positive": 1,
+                        "negative": 0,
+                        "fomo": 1,
+                        "fear": 0,
+                        "distrust": 0,
+                        "spam": 0,
+                        "sentiment": 1.0,
+                        "fomo_score": 0.5,
+                        "risk_score": 0.0,
+                    }
+                ],
+                baseline_snapshots=[
+                    {"new_weighted_post_count": 1.0, "weighted_post_count": 1.0},
+                    {"new_weighted_post_count": 1.0, "weighted_post_count": 1.0},
+                    {"new_weighted_post_count": 1.0, "weighted_post_count": 1.0},
+                ],
+            )
+
+            store.upsert_hourly_snapshot(index, snapshot_at="2026-06-03T10:00:00+09:00")
+            store.upsert_hourly_snapshot(index, snapshot_at="2026-06-03T10:00:00+09:00")
+
+            rows = store.fetch_hourly_snapshots(limit=5)
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["snapshot_at"], "2026-06-03T10:00:00+09:00")
+            self.assertEqual(rows[0]["day"], "2026-06-03")
 
     def _post(self, url: str, title: str, collected_at: str) -> CommunityPost:
         return CommunityPost(

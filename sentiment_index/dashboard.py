@@ -105,12 +105,14 @@ def build_summary(store: SentimentStore) -> dict[str, object]:
 def render_dashboard(store: SentimentStore) -> str:
     index = calculate_index(store, persist=False)
     top_rows = store.fetch_top_rows(limit=20, day=index.day)
+    hourly_rows = store.fetch_hourly_snapshots(limit=12)
     settings = load_settings()
     score_color = score_to_color(index.index_score)
     baseline_note = baseline_label(index.baseline_days, index.baseline_estimated_days)
     metric_notes = build_metric_notes()
     explanation_html = render_explanations()
     threshold_html = render_thresholds(index)
+    hourly_html = render_hourly_snapshots(hourly_rows)
     settings_html = render_settings(settings)
     rows_html = "\n".join(render_post_row(row) for row in top_rows)
     if not rows_html:
@@ -213,6 +215,23 @@ def render_dashboard(store: SentimentStore) -> str:
       border: 1px solid var(--line);
       border-radius: 8px;
       overflow: hidden;
+    }}
+    .table-head {{
+      padding: 16px 16px 0;
+    }}
+    .table-head h2 {{
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: 0;
+    }}
+    .table-head p {{
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }}
+    .hourly-wrap {{
+      margin-bottom: 18px;
     }}
     .explain {{
       margin: 0 0 18px;
@@ -451,6 +470,7 @@ def render_dashboard(store: SentimentStore) -> str:
     </section>
     {explanation_html}
     {threshold_html}
+    {hourly_html}
     {settings_html}
     <section class="table-wrap">
       <table>
@@ -492,6 +512,48 @@ def render_post_row(row: dict[str, object]) -> str:
         f"<td>{sentiment:.2f}</td>"
         f"<td>{fomo:.2f}</td>"
         f"<td>{risk:.2f}</td>"
+        "</tr>"
+    )
+
+
+def render_hourly_snapshots(rows: list[dict[str, object]]) -> str:
+    row_html = "\n".join(render_hourly_row(row) for row in rows)
+    if not row_html:
+        row_html = '<tr><td colspan="7" class="empty">아직 시간별 스냅샷이 없습니다.</td></tr>'
+    return (
+        '<section class="table-wrap hourly-wrap">'
+        '<div class="table-head">'
+        "<h2>Recent Hourly Snapshots</h2>"
+        "<p>매시간 수집 직후 저장된 KST 기준 지표 상태입니다. 시간 단위 백테스트는 이 기록을 사용합니다.</p>"
+        "</div>"
+        "<table>"
+        "<thead>"
+        "<tr>"
+        "<th>KST Hour</th>"
+        "<th>Score</th>"
+        "<th>Regime</th>"
+        "<th>Posts</th>"
+        "<th>New</th>"
+        "<th>FOMO</th>"
+        "<th>Risk</th>"
+        "</tr>"
+        "</thead>"
+        f"<tbody>{row_html}</tbody>"
+        "</table>"
+        "</section>"
+    )
+
+
+def render_hourly_row(row: dict[str, object]) -> str:
+    return (
+        "<tr>"
+        f"<td>{html.escape(str(row['snapshot_at'])[:16])}</td>"
+        f"<td>{float(row['index_score']):.2f}</td>"
+        f"<td>{html.escape(str(row['regime']))}</td>"
+        f"<td>{int(row['post_count'])}</td>"
+        f"<td>{int(row['new_post_count'])}</td>"
+        f"<td>{format_rate(float(row['fomo_score']))}</td>"
+        f"<td>{format_rate(float(row['risk_score']))}</td>"
         "</tr>"
     )
 

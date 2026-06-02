@@ -22,6 +22,10 @@ def kst_today_iso() -> str:
     return kst_today().isoformat()
 
 
+def kst_hour_iso() -> str:
+    return datetime.now(KST).replace(minute=0, second=0, microsecond=0).isoformat()
+
+
 def parse_article_identity(
     *,
     source: str,

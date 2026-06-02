@@ -196,6 +196,17 @@ def build_index(config: PipelineConfig = DEFAULT_CONFIG, *, day: str | None = No
     return PipelineResult(daily_index=calculate_index(store, day=day, persist=True))
 
 
+def build_index_with_hourly_snapshot(
+    config: PipelineConfig = DEFAULT_CONFIG,
+    *,
+    day: str | None = None,
+) -> PipelineResult:
+    store = initialize_store(config)
+    index = calculate_index(store, day=day, persist=True)
+    store.upsert_hourly_snapshot(index)
+    return PipelineResult(daily_index=index)
+
+
 def run_daily(
     config: PipelineConfig = DEFAULT_CONFIG,
     *,
@@ -212,7 +223,7 @@ def run_daily(
         use_runtime_settings=use_runtime_settings,
     )
     scored = score_posts(config, rescore=True)
-    indexed = build_index(config)
+    indexed = build_index_with_hourly_snapshot(config)
     result.posts_scored = scored.posts_scored
     result.daily_index = indexed.daily_index
     return result
@@ -257,13 +268,14 @@ def run_scheduler(
                 verbose=verbose,
             )
             score_result = score_posts(config, rescore=True)
-            index_result = build_index(config)
+            index_result = build_index_with_hourly_snapshot(config)
             _log(
                 "scheduled update complete: "
                 f"posts={collect_result.posts_collected}, "
                 f"trends={collect_result.trends_collected}, "
                 f"scored={score_result.posts_scored}, "
-                f"index={index_result.daily_index.index_score if index_result.daily_index else 'n/a'}",
+                f"index={index_result.daily_index.index_score if index_result.daily_index else 'n/a'} "
+                "(hourly snapshot saved)",
                 True,
             )
         except Exception as exc:
