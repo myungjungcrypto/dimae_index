@@ -64,6 +64,7 @@ def parse_args() -> argparse.Namespace:
     schedule = sub.add_parser("schedule", help="Run automatic updates twice per day")
     schedule.add_argument("--times", default="09:00,21:00", help="Comma-separated local times")
     schedule.add_argument("--hourly", action="store_true", help="Run every hour")
+    schedule.add_argument("--timezone", default="Asia/Seoul", help="IANA timezone for schedule times")
     schedule.add_argument("--include-dcinside", action="store_true", help="Also collect DCInside")
     schedule.add_argument("--run-on-start", action="store_true", help="Run one update immediately")
     schedule.add_argument("--strict", action="store_true", help="Fail on source errors")
@@ -169,6 +170,7 @@ def main() -> None:
         run_scheduler(
             config,
             times=times,
+            timezone_name=args.timezone,
             include_dcinside=args.include_dcinside,
             strict=args.strict,
             verbose=args.verbose,

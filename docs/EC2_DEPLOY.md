@@ -81,17 +81,27 @@ PM2 prints a `sudo env ... pm2 startup ...` command. Run that printed command on
 pm2 save
 ```
 
-## 7. Security group
+## 7. Access dashboard with an SSH tunnel
 
-The PM2 dashboard binds to `0.0.0.0:8765` for EC2 access.
+The safest default is to keep TCP `8765` closed in the EC2 security group and access the dashboard through SSH:
 
-In the EC2 security group, open TCP `8765` only to your current IP address, not to `0.0.0.0/0`.
+```bash
+ssh -i ~/downloads/jung_test.pem -L 8765:127.0.0.1:8765 ec2-user@43.201.222.151
+```
 
-Then open:
+Then open the local tunnel URL:
 
 ```text
-http://43.201.222.151:8765
+http://127.0.0.1:8765
 ```
+
+If local port `8765` is already in use, use a different local port:
+
+```bash
+ssh -i ~/downloads/jung_test.pem -L 8876:127.0.0.1:8765 ec2-user@43.201.222.151
+```
+
+Then open `http://127.0.0.1:8876`.
 
 ## Useful commands
 
@@ -102,4 +112,3 @@ pm2 restart ecosystem.config.cjs
 pm2 stop dimae-index-hourly-update
 pm2 delete ecosystem.config.cjs
 ```
-

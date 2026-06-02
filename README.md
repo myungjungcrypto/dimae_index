@@ -88,7 +88,7 @@ python3 -m sentiment_index.cli dashboard
 하루 2회 자동 갱신 프로세스를 켜려면:
 
 ```bash
-python3 -m sentiment_index.cli schedule --times 09:00,21:00 --verbose
+python3 -m sentiment_index.cli schedule --times 09:00,21:00 --timezone Asia/Seoul --verbose
 ```
 
 이 명령은 계속 실행되는 프로세스입니다. AWS에서는 `systemd`, `supervisor`, `tmux` 같은 프로세스 매니저로 켜두는 방식이 좋습니다.
@@ -96,7 +96,7 @@ python3 -m sentiment_index.cli schedule --times 09:00,21:00 --verbose
 매시간 갱신하려면:
 
 ```bash
-python3 -m sentiment_index.cli schedule --hourly --verbose
+python3 -m sentiment_index.cli schedule --hourly --timezone Asia/Seoul --verbose
 ```
 
 EC2/PM2 배포는 [docs/EC2_DEPLOY.md](docs/EC2_DEPLOY.md)를 참고합니다.

@@ -13,11 +13,10 @@ module.exports = {
       name: "dimae-index-hourly-update",
       cwd: __dirname,
       script: "python3",
-      args: "-m sentiment_index.cli schedule --hourly --verbose",
+      args: "-m sentiment_index.cli schedule --hourly --timezone Asia/Seoul --verbose",
       autorestart: true,
       watch: false,
       max_memory_restart: "300M",
     },
   ],
 };
-

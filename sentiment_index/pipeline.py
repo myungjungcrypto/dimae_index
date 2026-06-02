@@ -8,6 +8,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from statistics import median
 from time import sleep
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .config import DEFAULT_CONFIG, PipelineConfig
 from .dcinside import DcinsideClient
@@ -214,12 +215,18 @@ def run_scheduler(
     config: PipelineConfig = DEFAULT_CONFIG,
     *,
     times: tuple[str, ...] = ("09:00", "21:00"),
+    timezone_name: str = "Asia/Seoul",
     include_dcinside: bool = False,
     strict: bool = False,
     verbose: bool = False,
     run_on_start: bool = False,
 ) -> None:
+    scheduler_timezone = _load_timezone(timezone_name)
     schedule_times = tuple(sorted(_parse_time(value) for value in times))
+    _log(
+        f"scheduler timezone={timezone_name}, times={','.join(value.strftime('%H:%M') for value in schedule_times)}",
+        True,
+    )
     if run_on_start:
         _log("running initial scheduled update...", True)
         run_daily(
@@ -230,10 +237,10 @@ def run_scheduler(
         )
 
     while True:
-        now = datetime.now().astimezone()
+        now = datetime.now(scheduler_timezone)
         next_run = _next_run_at(now, schedule_times)
         seconds = max(1.0, (next_run - now).total_seconds())
-        _log(f"next update at {next_run.strftime('%Y-%m-%d %H:%M:%S %Z')}", True)
+        _log(f"next update at {_format_schedule_time(next_run)}", True)
         sleep(seconds)
         try:
             collect_result = collect_sources(
@@ -255,12 +262,13 @@ def run_scheduler(
         except Exception as exc:
             if strict:
                 raise
-            _log(f"scheduled update failed: {exc}", True)
+            _log(f"scheduled update failed: {exc}", True, error=True)
 
 
-def _log(message: str, verbose: bool) -> None:
+def _log(message: str, verbose: bool, *, error: bool = False) -> None:
     if verbose:
-        print(f"[sentiment-index] {message}", file=sys.stderr, flush=True)
+        stream = sys.stderr if error else sys.stdout
+        print(f"[sentiment-index] {message}", file=stream, flush=True)
 
 
 def seed_sample_data(config: PipelineConfig = DEFAULT_CONFIG) -> PipelineResult:
@@ -419,6 +427,20 @@ def _intensity(groups: dict[str, float], name: str, attention: float) -> float:
 def _parse_time(value: str) -> time:
     hour, minute = value.split(":", 1)
     return time(hour=int(hour), minute=int(minute))
+
+
+def _load_timezone(name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(f"unknown timezone: {name}") from exc
+
+
+def _format_schedule_time(value: datetime) -> str:
+    utc_value = value.astimezone(ZoneInfo("UTC"))
+    local = value.strftime("%Y-%m-%d %H:%M:%S %Z")
+    utc = utc_value.strftime("%Y-%m-%d %H:%M:%S %Z")
+    return f"{local} ({utc})"
 
 
 def _next_run_at(now: datetime, schedule_times: tuple[time, ...]) -> datetime:
