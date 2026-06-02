@@ -34,6 +34,13 @@ class DcGallery:
 
 
 @dataclass(frozen=True)
+class BobaedreamBoard:
+    name: str
+    code: str
+    weight: float = 0.8
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     db_path: Path = DEFAULT_DB_PATH
     keywords: tuple[str, ...] = (
@@ -71,8 +78,13 @@ class PipelineConfig:
         DcGallery("디시 비트코인 갤러리", "bitcoins_new1", 0.7),
         DcGallery("디시 주식 갤러리", "neostock", 0.6),
     )
+    bobaedream_boards: tuple[BobaedreamBoard, ...] = (
+        BobaedreamBoard("보배드림 자유게시판", "freeb", 0.7),
+        BobaedreamBoard("보배드림 베스트글", "best", 1.0),
+    )
     cafe_pages_per_keyword: int = 2
     dc_pages_per_gallery: int = 2
+    bobaedream_pages_per_board: int = 2
 
 
 @dataclass(frozen=True)

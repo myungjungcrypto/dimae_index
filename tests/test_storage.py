@@ -18,6 +18,26 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(article_group, "naver_cafe:dieselmania")
         self.assertEqual(article_id, 47122184)
 
+    def test_parse_bobaedream_article_identity(self) -> None:
+        article_group, article_id = parse_article_identity(
+            source="bobaedream",
+            source_name="보배드림 자유게시판",
+            url="https://www.bobaedream.co.kr/view?code=freeb&No=3406866&bm=1",
+        )
+
+        self.assertEqual(article_group, "bobaedream:freeb")
+        self.assertEqual(article_id, 3406866)
+
+    def test_parse_dcinside_article_identity(self) -> None:
+        article_group, article_id = parse_article_identity(
+            source="dcinside",
+            source_name="디시 비트코인 갤러리",
+            url="https://gall.dcinside.com/board/view/?id=bitcoins_new1&no=12345",
+        )
+
+        self.assertEqual(article_group, "dcinside:bitcoins_new1")
+        self.assertEqual(article_id, 12345)
+
     def test_daily_rows_use_kst_day_and_article_sequence_newness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = SentimentStore(Path(tmp) / "sentiment.sqlite3")
@@ -94,6 +114,41 @@ class StorageTest(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["snapshot_at"], "2026-06-03T10:00:00+09:00")
             self.assertEqual(rows[0]["day"], "2026-06-03")
+
+    def test_source_breakdown_groups_daily_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SentimentStore(Path(tmp) / "sentiment.sqlite3")
+            store.initialize()
+            bobaedream = CommunityPost(
+                source="bobaedream",
+                source_name="보배드림 자유게시판",
+                title="삼성전자 주식 반등",
+                summary="",
+                url="https://www.bobaedream.co.kr/view?code=freeb&No=3406866",
+                weight=0.7,
+                collected_at="2026-06-02T18:00:00+00:00",
+            ).normalized()
+            dcinside = CommunityPost(
+                source="dcinside",
+                source_name="디시 비트코인 갤러리",
+                title="비트코인 풀매수",
+                summary="",
+                url="https://gall.dcinside.com/board/view/?id=bitcoins_new1&no=12345",
+                weight=0.6,
+                collected_at="2026-06-02T18:10:00+00:00",
+            ).normalized()
+            for post in (bobaedream, dcinside):
+                store.upsert_posts([post])
+                store.upsert_scores([score_post(post)])
+
+            rows = store.fetch_source_breakdown(day="2026-06-03")
+
+            self.assertEqual(len(rows), 2)
+            by_source = {row["source_name"]: row for row in rows}
+            self.assertEqual(by_source["보배드림 자유게시판"]["post_count"], 1)
+            self.assertEqual(by_source["보배드림 자유게시판"]["new_post_count"], 1)
+            self.assertEqual(by_source["디시 비트코인 갤러리"]["post_count"], 1)
+            self.assertEqual(by_source["디시 비트코인 갤러리"]["new_post_count"], 1)
 
     def _post(self, url: str, title: str, collected_at: str) -> CommunityPost:
         return CommunityPost(

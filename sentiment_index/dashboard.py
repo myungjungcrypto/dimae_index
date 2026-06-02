@@ -99,12 +99,14 @@ def build_summary(store: SentimentStore) -> dict[str, object]:
         "trend_momentum": index.trend_momentum,
         "spam_rate": index.spam_rate,
         "snapshot_source": index.snapshot_source,
+        "source_breakdown": store.fetch_source_breakdown(day=index.day),
     }
 
 
 def render_dashboard(store: SentimentStore) -> str:
     index = calculate_index(store, persist=False)
     top_rows = store.fetch_top_rows(limit=20, day=index.day)
+    source_rows = store.fetch_source_breakdown(day=index.day)
     hourly_rows = store.fetch_hourly_snapshots(limit=12)
     settings = load_settings()
     score_color = score_to_color(index.index_score)
@@ -112,6 +114,7 @@ def render_dashboard(store: SentimentStore) -> str:
     metric_notes = build_metric_notes()
     explanation_html = render_explanations()
     threshold_html = render_thresholds(index)
+    source_html = render_source_breakdown(source_rows)
     hourly_html = render_hourly_snapshots(hourly_rows)
     settings_html = render_settings(settings)
     rows_html = "\n".join(render_post_row(row) for row in top_rows)
@@ -470,6 +473,7 @@ def render_dashboard(store: SentimentStore) -> str:
     </section>
     {explanation_html}
     {threshold_html}
+    {source_html}
     {hourly_html}
     {settings_html}
     <section class="table-wrap">
@@ -541,6 +545,50 @@ def render_hourly_snapshots(rows: list[dict[str, object]]) -> str:
         f"<tbody>{row_html}</tbody>"
         "</table>"
         "</section>"
+    )
+
+
+def render_source_breakdown(rows: list[dict[str, object]]) -> str:
+    row_html = "\n".join(render_source_row(row) for row in rows)
+    if not row_html:
+        row_html = '<tr><td colspan="8" class="empty">아직 소스별 집계가 없습니다.</td></tr>'
+    return (
+        '<section class="table-wrap hourly-wrap">'
+        '<div class="table-head">'
+        "<h2>Source Breakdown</h2>"
+        "<p>오늘 KST 기준 소스별 기여도입니다. 표본이 한 커뮤니티에 쏠리는지 확인할 때 사용합니다.</p>"
+        "</div>"
+        "<table>"
+        "<thead>"
+        "<tr>"
+        "<th>Source</th>"
+        "<th>Posts</th>"
+        "<th>New</th>"
+        "<th>Weighted</th>"
+        "<th>New W.</th>"
+        "<th>FOMO</th>"
+        "<th>Risk</th>"
+        "<th>Spam</th>"
+        "</tr>"
+        "</thead>"
+        f"<tbody>{row_html}</tbody>"
+        "</table>"
+        "</section>"
+    )
+
+
+def render_source_row(row: dict[str, object]) -> str:
+    return (
+        "<tr>"
+        f"<td>{html.escape(str(row['source_name']))}</td>"
+        f"<td>{int(row['post_count'])}</td>"
+        f"<td>{int(row['new_post_count'])}</td>"
+        f"<td>{float(row['weighted_post_count']):.1f}</td>"
+        f"<td>{float(row['new_weighted_post_count']):.1f}</td>"
+        f"<td>{format_rate(float(row['fomo_score'] or 0.0))}</td>"
+        f"<td>{format_rate(float(row['risk_score'] or 0.0))}</td>"
+        f"<td>{format_rate(float(row['spam_rate'] or 0.0))}</td>"
+        "</tr>"
     )
 
 

@@ -10,6 +10,7 @@ from statistics import median
 from time import sleep
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .bobaedream import BobaedreamClient
 from .config import DEFAULT_CONFIG, PipelineConfig
 from .dcinside import DcinsideClient
 from .http import HttpError
@@ -52,6 +53,7 @@ def collect_sources(
     config: PipelineConfig = DEFAULT_CONFIG,
     *,
     include_naver: bool = True,
+    include_bobaedream: bool = True,
     include_dcinside: bool = True,
     include_trends: bool = True,
     strict: bool = False,
@@ -88,6 +90,22 @@ def collect_sources(
                 result.warnings.append(f"naver skipped: {exc}")
         else:
             result.warnings.append("naver skipped: NAVER_CLIENT_ID/NAVER_CLIENT_SECRET not set")
+
+    if include_bobaedream:
+        bobaedream = BobaedreamClient()
+        try:
+            _log("collecting bobaedream board posts...", verbose)
+            posts.extend(
+                bobaedream.collect_board_posts(
+                    config.bobaedream_boards,
+                    pages_per_board=config.bobaedream_pages_per_board,
+                    keywords=config.keywords,
+                )
+            )
+        except HttpError as exc:
+            if strict:
+                raise
+            result.warnings.append(f"bobaedream skipped: {exc}")
 
     if include_dcinside:
         dc = DcinsideClient()
@@ -211,12 +229,14 @@ def run_daily(
     config: PipelineConfig = DEFAULT_CONFIG,
     *,
     include_dcinside: bool = True,
+    include_bobaedream: bool = True,
     strict: bool = False,
     verbose: bool = False,
     use_runtime_settings: bool = True,
 ) -> PipelineResult:
     result = collect_sources(
         config,
+        include_bobaedream=include_bobaedream,
         include_dcinside=include_dcinside,
         strict=strict,
         verbose=verbose,
@@ -235,6 +255,7 @@ def run_scheduler(
     times: tuple[str, ...] = ("09:00", "21:00"),
     timezone_name: str = "Asia/Seoul",
     include_dcinside: bool = False,
+    include_bobaedream: bool = True,
     strict: bool = False,
     verbose: bool = False,
     run_on_start: bool = False,
@@ -250,6 +271,7 @@ def run_scheduler(
         run_daily(
             config,
             include_dcinside=include_dcinside,
+            include_bobaedream=include_bobaedream,
             strict=strict,
             verbose=verbose,
         )
@@ -263,6 +285,7 @@ def run_scheduler(
         try:
             collect_result = collect_sources(
                 config,
+                include_bobaedream=include_bobaedream,
                 include_dcinside=include_dcinside,
                 strict=strict,
                 verbose=verbose,

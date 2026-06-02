@@ -618,6 +618,61 @@ class SentimentStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def fetch_source_breakdown(self, *, day: str | None = None) -> list[dict[str, Any]]:
+        last_seen_day = _kst_day_sql("p.last_seen_at")
+        first_seen_day = _kst_day_sql("p.first_seen_at")
+        previous_article_max_sql = f"""
+            SELECT MAX(prev.article_id)
+            FROM posts prev
+            WHERE prev.article_group = p.article_group
+              AND prev.article_id IS NOT NULL
+              AND {_kst_day_sql("prev.first_seen_at")} < {last_seen_day}
+        """
+        is_new_sql = f"""
+            CASE
+                WHEN {first_seen_day} = {last_seen_day}
+                 AND (
+                    p.article_id IS NULL
+                    OR p.article_group IS NULL
+                    OR p.article_id > COALESCE(({previous_article_max_sql}), -1)
+                 )
+                THEN 1 ELSE 0
+            END
+        """
+        if day:
+            where_sql = f"{last_seen_day} = ?"
+            params: tuple[Any, ...] = (day,)
+        else:
+            where_sql = f"""
+                {last_seen_day} = (
+                    SELECT MAX({_kst_day_sql("last_seen_at")}) FROM posts
+                )
+            """
+            params = ()
+
+        with self.connect() as con:
+            rows = con.execute(
+                f"""
+                SELECT
+                    p.source,
+                    p.source_name,
+                    COUNT(*) AS post_count,
+                    SUM({is_new_sql}) AS new_post_count,
+                    SUM(p.weight) AS weighted_post_count,
+                    SUM(CASE WHEN {is_new_sql} = 1 THEN p.weight ELSE 0 END) AS new_weighted_post_count,
+                    SUM(s.fomo_score * p.weight) / NULLIF(SUM(p.weight), 0) AS fomo_score,
+                    SUM(s.risk_score * p.weight) / NULLIF(SUM(p.weight), 0) AS risk_score,
+                    AVG(CASE WHEN s.spam > 0 THEN 1.0 ELSE 0.0 END) AS spam_rate
+                FROM posts p
+                JOIN article_scores s ON s.post_url = p.url
+                WHERE {where_sql}
+                GROUP BY p.source, p.source_name
+                ORDER BY weighted_post_count DESC, post_count DESC
+                """,
+                params,
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     @staticmethod
     def _snapshot_payload(index: Any) -> dict[str, Any]:
         if is_dataclass(index):

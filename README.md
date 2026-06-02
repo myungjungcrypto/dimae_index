@@ -21,6 +21,7 @@
 - 네이버 카페글 검색 API: 디젤매니아/나이키매니아 공개 카페글 후보 수집
 - 네이버 데이터랩 API: 남성 30~49세 검색 트렌드 수집
 - 디시인사이드 공개 게시판: 비트코인/주식 갤러리 목록 수집
+- 보배드림 공개 게시판: 자유게시판/베스트글 목록 수집
 - SQLite 저장
 - 사전 기반 감성 점수화
 - 처음 발견/마지막 발견 날짜 추적
@@ -116,7 +117,7 @@ python3 -m sentiment_index.cli schedule --times 09:00,21:00 --timezone Asia/Seou
 매시간 갱신하려면:
 
 ```bash
-python3 -m sentiment_index.cli schedule --hourly --timezone Asia/Seoul --verbose
+python3 -m sentiment_index.cli schedule --hourly --timezone Asia/Seoul --include-dcinside --verbose
 ```
 
 EC2/PM2 배포는 [docs/EC2_DEPLOY.md](docs/EC2_DEPLOY.md)를 참고합니다.
@@ -132,6 +133,7 @@ python3 -m sentiment_index.cli backfill-datalab --days 30
 - 대시보드 상단의 큰 숫자는 KST 기준 오늘 하루의 누적 상태입니다. 시간대별 잡음보다 큰 흐름을 보기 위해 일별 기준을 기본 화면으로 둡니다.
 - `hourly_snapshots`는 매시간 수집 직후의 지표 상태를 보존합니다. 시간 단위 백테스트에서는 이 테이블을 사용해서 “그 시간에 실제로 보였던 신호”를 기준으로 검증합니다.
 - 시간별 스냅샷은 해당 1시간에 새로 생긴 글만 따로 계산한 값이 아니라, 그 시점까지 포착된 KST 당일 누적 지표입니다. 시간별 증감은 이전 스냅샷과의 차이로 계산합니다.
+- `Source Breakdown`은 오늘 KST 기준 소스별 글 수, 신규 글 수, 가중 글 수, FOMO/Risk/Spam 비율을 보여줍니다. 특정 커뮤니티 하나가 지표를 과하게 움직이는지 확인할 때 봅니다.
 - `index_score`: 기준선 대비 언급량, FOMO, 리스크, 검색 모멘텀을 합친 0~100 점수
 - `attention_score`: 글 수 기반 관심도
 - `new_post_count`: KST 기준 해당 날짜에 처음 포착됐고, 카페 글번호가 이전 최고값보다 큰 글 수
@@ -197,6 +199,19 @@ python3 -m sentiment_index.cli backfill-datalab --days 30
    - FOMO/Risk 사전 변경은 기존 저장 글의 점수를 재계산할 수 있으므로 변경 이력을 기록하는 것이 좋습니다.
    - 최소 2~4주 이상 관측 데이터가 쌓인 뒤 백테스트 결과를 신뢰합니다.
    - 과최적화를 피하기 위해 in-sample/out-of-sample 구간을 나눕니다.
+
+## 수집 소스
+
+현재 기본 소스는 역할을 나눠서 봅니다.
+
+- 디젤매니아: 30~40대 남성 소비/투자 관심 커뮤니티. 기본 가중치 `1.2`
+- 나이키매니아: 소비재/리셀 성향이 섞인 남성 커뮤니티. 기본 가중치 `0.8`
+- 보배드림 자유게시판: 30~50대 남성 일반 대중 심리 보완 표본. 기본 가중치 `0.7`
+- 보배드림 베스트글: 보배드림 내 확산 글 표본. 기본 가중치 `1.0`
+- 디시 비트코인 갤러리: 코인 과열/FOMO 고속 감지용. 기본 가중치 `0.7`
+- 디시 주식 갤러리: 주식 과열/패닉 고속 감지용. 기본 가중치 `0.6`
+
+보배드림과 디시인사이드는 공개 목록 HTML에서 제목/URL/추천/조회수 중심으로 수집합니다. 일반 커뮤니티 특성상 노이즈가 많으므로, 대시보드의 `Source Breakdown`과 `spam_rate`를 같이 보면서 가중치를 조정합니다.
 
 ## 운영 메모
 

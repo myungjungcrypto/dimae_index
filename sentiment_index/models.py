@@ -32,12 +32,26 @@ def parse_article_identity(
     source_name: str,
     url: str,
 ) -> tuple[str | None, int | None]:
-    if source != "naver_cafe":
-        return None, None
-
     parsed = urlparse(url)
     parts = [part for part in parsed.path.split("/") if part]
     query = parse_qs(parsed.query)
+
+    if source == "bobaedream":
+        article_id = _first_int(query, "No", "no")
+        if article_id is not None:
+            group = _first_text(query, "code") or source_name
+            return f"bobaedream:{group}", article_id
+        return None, None
+
+    if source == "dcinside":
+        article_id = _first_int(query, "no")
+        if article_id is not None:
+            group = _first_text(query, "id") or source_name
+            return f"dcinside:{group}", article_id
+        return None, None
+
+    if source != "naver_cafe":
+        return None, None
 
     if "articles" in parts:
         index = parts.index("articles")
