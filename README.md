@@ -209,6 +209,8 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
    - 최소 2~4주 이상 관측 데이터가 쌓인 뒤 백테스트 결과를 신뢰합니다.
    - 과최적화를 피하기 위해 in-sample/out-of-sample 구간을 나눕니다.
    - 데이터랩 백테스트는 과거 proxy 탐색용이고, 실제 커뮤니티 지표의 검증은 앞으로 쌓이는 `daily_snapshots`/`hourly_snapshots`로 별도 수행합니다.
+   - 앞으로 쌓이는 실제 커뮤니티 지표는 매주 1회 백테스트를 진행하고, 주차별 결과를 `data/backtests/` 아래에 기록합니다.
+   - 주간 백테스트에서는 직전 주에 새로 쌓인 `daily_snapshots`/`hourly_snapshots`와 코스피/나스닥/비트코인 수익률을 비교합니다.
 
 ## 데이터랩 가격 백테스트
 
