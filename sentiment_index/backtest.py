@@ -276,7 +276,7 @@ def _pearson(xs: list[float], ys: list[float]) -> float | None:
         return None
     x_mean = _average(xs)
     y_mean = _average(ys)
-    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys, strict=True))
+    numerator = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys))
     x_denominator = math.sqrt(sum((x - x_mean) ** 2 for x in xs))
     y_denominator = math.sqrt(sum((y - y_mean) ** 2 for y in ys))
     denominator = x_denominator * y_denominator
