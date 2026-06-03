@@ -27,7 +27,7 @@ def request_json(
     timeout: int = 20,
     retries: int = 2,
     pause: float = 0.4,
-) -> dict[str, Any]:
+) -> Any:
     final_url = url
     if query:
         final_url = f"{url}?{urllib.parse.urlencode(query)}"
@@ -86,4 +86,3 @@ def request_text(
                 time.sleep(pause * (attempt + 1))
 
     raise HttpError(f"Text request failed: {final_url}: {last_error}") from last_error
-

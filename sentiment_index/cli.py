@@ -4,6 +4,7 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
+from .backtest import format_datalab_backtest_markdown, run_datalab_price_backtest
 from .config import DEFAULT_CONFIG, PipelineConfig
 from .dashboard import serve_dashboard
 from .pipeline import (
@@ -63,6 +64,13 @@ def parse_args() -> argparse.Namespace:
     backfill.add_argument("--days", type=int, default=30, help="Number of historical days to estimate")
     backfill.add_argument("--no-refresh-trends", action="store_true", help="Use already stored DataLab rows")
     backfill.add_argument("--strict", action="store_true", help="Fail on source errors")
+
+    backtest = sub.add_parser("backtest-datalab", help="Backtest 1y DataLab proxies against market prices")
+    backtest.add_argument("--days", type=int, default=365, help="Historical calendar days to test")
+    backtest.add_argument("--end-date", help="End date in YYYY-MM-DD; defaults to today")
+    backtest.add_argument("--no-refresh", action="store_true", help="Use already stored trends/prices")
+    backtest.add_argument("--top", type=int, default=20, help="Rows to show in the Markdown report")
+    backtest.add_argument("--output", help="Optional Markdown output path")
 
     schedule = sub.add_parser("schedule", help="Run automatic updates twice per day")
     schedule.add_argument("--times", default="09:00,21:00", help="Comma-separated local times")
@@ -178,6 +186,22 @@ def main() -> None:
             print(f"warning: {warning}")
         if result.daily_index:
             print(format_index(result.daily_index))
+
+    if args.command == "backtest-datalab":
+        result = run_datalab_price_backtest(
+            config,
+            days=args.days,
+            end_date=args.end_date,
+            refresh=not args.no_refresh,
+        )
+        report_text = format_datalab_backtest_markdown(result, top=args.top)
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(report_text, encoding="utf-8")
+            print(f"wrote: {output_path}")
+        print(report_text)
+        return
 
     if args.command == "schedule":
         times = hourly_times() if args.hourly else tuple(part.strip() for part in args.times.split(",") if part.strip())

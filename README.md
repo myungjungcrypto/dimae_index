@@ -128,6 +128,14 @@ EC2/PM2 배포는 [docs/EC2_DEPLOY.md](docs/EC2_DEPLOY.md)를 참고합니다.
 python3 -m sentiment_index.cli backfill-datalab --days 30
 ```
 
+데이터랩 1년치와 가격 일봉으로 큰 상관관계를 먼저 보려면:
+
+```bash
+python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output data/backtests/datalab_price_1y.md
+```
+
+이 명령은 네이버 데이터랩 남성 30~49세 일별 검색 트렌드와 코스피/나스닥/비트코인 일봉을 저장한 뒤, 데이터랩 신호와 당일/다음 1일/3일/7일 수익률의 단순 상관관계를 Markdown으로 출력합니다.
+
 ## 지표 해석
 
 - 대시보드 상단의 큰 숫자는 KST 기준 오늘 하루의 누적 상태입니다. 시간대별 잡음보다 큰 흐름을 보기 위해 일별 기준을 기본 화면으로 둡니다.
@@ -178,6 +186,7 @@ python3 -m sentiment_index.cli backfill-datalab --days 30
    - 시간 단위 신호 검증은 KST 기준 `hourly_snapshots` 사용
    - 미국 시장 데이터는 장 마감 기준 날짜를 KST와 매칭
    - 코인은 24시간 시장이므로 UTC/KST 기준을 명시해서 고정
+   - 과거 1년 탐색은 `backtest-datalab`으로 데이터랩 proxy와 가격 일봉을 먼저 비교
 
 3. 후보 파라미터
    - `index_score` 절대값: 예 60 이상 risk_on, 75 이상 euphoria
@@ -199,6 +208,22 @@ python3 -m sentiment_index.cli backfill-datalab --days 30
    - FOMO/Risk 사전 변경은 기존 저장 글의 점수를 재계산할 수 있으므로 변경 이력을 기록하는 것이 좋습니다.
    - 최소 2~4주 이상 관측 데이터가 쌓인 뒤 백테스트 결과를 신뢰합니다.
    - 과최적화를 피하기 위해 in-sample/out-of-sample 구간을 나눕니다.
+   - 데이터랩 백테스트는 과거 proxy 탐색용이고, 실제 커뮤니티 지표의 검증은 앞으로 쌓이는 `daily_snapshots`/`hourly_snapshots`로 별도 수행합니다.
+
+## 데이터랩 가격 백테스트
+
+`backtest-datalab`은 과거 커뮤니티 원문을 완벽히 복원할 수 없는 문제를 우회하기 위한 탐색 도구입니다.
+
+- 데이터랩 신호: `crypto`, `stocks`, `fomo`, `risk`
+- 신호 형태: 원점수 `*_level`, 7일 평균 모멘텀 `*_momentum_7d`
+- 가격 데이터:
+  - 비트코인: Binance `BTCUSDT` 일봉
+  - 나스닥: Yahoo chart `^IXIC` 일봉
+  - 코스피: 네이버 금융 `KOSPI` 일별 시세
+- 비교 수익률: 당일, 다음 1일, 3일, 7일
+- `High Signal Avg Return`: 해당 신호가 상위 20%였던 날의 평균 수익률
+
+이 결과는 “어떤 검색 심리 proxy가 어떤 시장과 관계가 있는지”를 보는 1차 필터입니다. 유의미해 보이는 신호만 이후 실제 커뮤니티 관측 지표와 비교합니다.
 
 ## 수집 소스
 

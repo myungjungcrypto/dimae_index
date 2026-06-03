@@ -162,6 +162,34 @@ class TrendPoint:
 
 
 @dataclass(frozen=True)
+class MarketPrice:
+    market: str
+    symbol: str
+    date: str
+    close: float
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    volume: float | None = None
+    source: str = ""
+    collected_at: str = ""
+
+    def normalized(self) -> "MarketPrice":
+        return MarketPrice(
+            market=self.market,
+            symbol=self.symbol,
+            date=self.date,
+            close=float(self.close),
+            open=float(self.open) if self.open is not None else None,
+            high=float(self.high) if self.high is not None else None,
+            low=float(self.low) if self.low is not None else None,
+            volume=float(self.volume) if self.volume is not None else None,
+            source=self.source,
+            collected_at=self.collected_at or utc_now_iso(),
+        )
+
+
+@dataclass(frozen=True)
 class ArticleScore:
     post_url: str
     scored_at: str

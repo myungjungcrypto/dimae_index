@@ -9,6 +9,7 @@ from typing import Any
 from .models import (
     ArticleScore,
     CommunityPost,
+    MarketPrice,
     TrendPoint,
     kst_hour_iso,
     kst_today_iso,
@@ -82,6 +83,20 @@ class SentimentStore:
                     demographic TEXT NOT NULL,
                     collected_at TEXT NOT NULL,
                     PRIMARY KEY(source, group_name, period, demographic)
+                );
+
+                CREATE TABLE IF NOT EXISTS market_prices (
+                    market TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    open REAL,
+                    high REAL,
+                    low REAL,
+                    close REAL NOT NULL,
+                    volume REAL,
+                    source TEXT NOT NULL,
+                    collected_at TEXT NOT NULL,
+                    PRIMARY KEY(market, date)
                 );
 
                 CREATE TABLE IF NOT EXISTS daily_snapshots (
@@ -318,6 +333,46 @@ class SentimentStore:
             )
             return con.total_changes - before
 
+    def upsert_market_prices(self, prices: Iterable[MarketPrice]) -> int:
+        rows = [price.normalized() for price in prices]
+        if not rows:
+            return 0
+        with self.connect() as con:
+            before = con.total_changes
+            con.executemany(
+                """
+                INSERT INTO market_prices (
+                    market, symbol, date, open, high, low, close, volume, source, collected_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(market, date) DO UPDATE SET
+                    symbol=excluded.symbol,
+                    open=excluded.open,
+                    high=excluded.high,
+                    low=excluded.low,
+                    close=excluded.close,
+                    volume=excluded.volume,
+                    source=excluded.source,
+                    collected_at=excluded.collected_at
+                """,
+                [
+                    (
+                        price.market,
+                        price.symbol,
+                        price.date,
+                        price.open,
+                        price.high,
+                        price.low,
+                        price.close,
+                        price.volume,
+                        price.source,
+                        price.collected_at,
+                    )
+                    for price in rows
+                ],
+            )
+            return con.total_changes - before
+
     def fetch_unscored_posts(self, *, limit: int = 1000) -> list[CommunityPost]:
         with self.connect() as con:
             rows = con.execute(
@@ -541,6 +596,37 @@ class SentimentStore:
                 FROM trends
                 ORDER BY period ASC, group_name ASC
                 """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def fetch_trend_period_rows_between(self, *, start: str, end: str) -> list[dict[str, Any]]:
+        with self.connect() as con:
+            rows = con.execute(
+                """
+                SELECT group_name, period, ratio
+                FROM trends
+                WHERE period BETWEEN ? AND ?
+                ORDER BY period ASC, group_name ASC
+                """,
+                (start, end),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def fetch_market_prices_between(
+        self,
+        *,
+        start: str,
+        end: str,
+    ) -> list[dict[str, Any]]:
+        with self.connect() as con:
+            rows = con.execute(
+                """
+                SELECT market, symbol, date, open, high, low, close, volume, source
+                FROM market_prices
+                WHERE date BETWEEN ? AND ?
+                ORDER BY market ASC, date ASC
+                """,
+                (start, end),
             ).fetchall()
         return [dict(row) for row in rows]
 
