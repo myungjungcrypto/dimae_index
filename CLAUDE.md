@@ -5,7 +5,7 @@
 - The headline dashboard score is a rolling 24-hour observation, not a KST day-to-date cumulative score.
 - User-facing labels should say `Greed` and `Fear`. Keep internal field names such as `fomo_score` and `risk_score` for database/API compatibility.
 - The dashboard should feel like a community-data version of CoinMarketCap's Fear & Greed Index: current gauge first, then historical values and high/low context, then supporting community evidence.
-- The headline gauge should be a horizontal semicircle with its flat base facing downward, not a full circle or vertical half-circle. Low scores start near `Fear` on the left, and high scores move toward `Greed` on the right.
+- The headline gauge should be a horizontal segmented semicircle with its flat base facing downward. Use a black dot marker on the arc instead of a needle; low scores start near `Fear` on the left, and high scores move toward `Greed` on the right.
 - The 0-100 scale should be calibrated against historical `daily_snapshots`, not against only the current 24-hour window.
 - Use up to 90 prior daily checkpoints as the baseline distribution.
 - If fewer than 14 baseline days exist, keep `index_score` at 50 and mark the regime as `calibrating`.

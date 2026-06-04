@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -203,71 +204,41 @@ def render_dashboard(store: SentimentStore) -> str:
     }}
     .fg-gauge-row {{
       display: grid;
-      grid-template-columns: 240px minmax(0, 1fr);
+      grid-template-columns: 300px minmax(0, 1fr);
       gap: 20px;
       align-items: center;
     }}
     .fg-gauge {{
       position: relative;
-      width: 240px;
-      height: 190px;
-      overflow: hidden;
+      width: min(300px, 100%);
+      aspect-ratio: 300 / 205;
+      margin: 0 auto;
     }}
-    .fg-arc {{
+    .fg-gauge svg {{
       position: absolute;
-      width: 240px;
-      height: 240px;
+      width: 100%;
+      height: 100%;
       inset: 0;
-      border-radius: 50%;
-      clip-path: inset(0 0 50% 0);
-      background:
-        conic-gradient(
-          from 270deg,
-          var(--fear) 0deg 36deg,
-          var(--worry) 36deg 72deg,
-          #cbd5e1 72deg 108deg,
-          var(--greed) 108deg 144deg,
-          var(--extreme-greed) 144deg 180deg,
-          transparent 180deg 360deg
-        );
-      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+      overflow: visible;
     }}
-    .fg-arc::before {{
-      content: "";
-      position: absolute;
-      inset: 27px;
-      border-radius: 50%;
-      background: #ffffff;
-      border: 1px solid var(--line);
+    .fg-arc-segment {{
+      fill: none;
+      stroke-linecap: round;
+      stroke-width: 13;
     }}
-    .fg-needle {{
-      position: absolute;
-      left: calc(50% - 2px);
-      bottom: 70px;
-      width: 4px;
-      height: 88px;
-      border-radius: 999px;
-      background: #111827;
-      transform-origin: 50% 100%;
-      transform: rotate(var(--needle-angle));
-      z-index: 2;
+    .fg-marker-halo {{
+      fill: #ffffff;
+      stroke: #ffffff;
+      stroke-width: 4;
     }}
-    .fg-needle::after {{
-      content: "";
-      position: absolute;
-      left: 50%;
-      bottom: -8px;
-      width: 16px;
-      height: 16px;
-      transform: translateX(-50%);
-      border-radius: 50%;
-      background: #111827;
+    .fg-marker {{
+      fill: #020617;
     }}
     .fg-gauge-center {{
       position: absolute;
       left: 0;
       right: 0;
-      top: 132px;
+      top: 66px;
       z-index: 3;
       display: grid;
       place-items: center;
@@ -276,37 +247,16 @@ def render_dashboard(store: SentimentStore) -> str:
     .fg-gauge-center strong {{
       display: block;
       color: var(--accent);
-      font-size: 36px;
+      font-size: 56px;
+      font-weight: 800;
       line-height: 1;
     }}
     .fg-gauge-center span {{
       display: block;
       margin-top: 6px;
-      color: var(--ink);
-      font-size: 13px;
-      font-weight: 750;
-    }}
-    .fg-direction-labels {{
-      position: absolute;
-      inset: 0;
-      z-index: 4;
-      pointer-events: none;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0;
-      text-transform: uppercase;
-    }}
-    .fg-direction-labels .greed {{
-      position: absolute;
-      top: 126px;
-      right: 0;
-      color: var(--greed);
-    }}
-    .fg-direction-labels .fear {{
-      position: absolute;
-      left: 0;
-      top: 126px;
-      color: var(--fear);
+      color: #64748b;
+      font-size: 19px;
+      font-weight: 500;
     }}
     .fg-copy h2 {{
       margin: 0;
@@ -692,10 +642,38 @@ def _first_form_value(payload: dict[str, list[str]], name: str) -> str:
     return values[0].strip() if values else ""
 
 
+def _gauge_point(angle_deg: float, *, cx: float = 160.0, cy: float = 158.0, radius: float = 124.0) -> tuple[float, float]:
+    angle = math.radians(angle_deg)
+    return cx + radius * math.cos(angle), cy - radius * math.sin(angle)
+
+
+def _gauge_arc_path(start_deg: float, end_deg: float) -> str:
+    start_x, start_y = _gauge_point(start_deg)
+    end_x, end_y = _gauge_point(end_deg)
+    large_arc = 1 if abs(start_deg - end_deg) > 180 else 0
+    return f"M {start_x:.2f} {start_y:.2f} A 124 124 0 {large_arc} 1 {end_x:.2f} {end_y:.2f}"
+
+
+def render_gauge_segments() -> str:
+    segments = [
+        (180, 149, "#ef4444"),
+        (142, 111, "#f59e0b"),
+        (104, 76, "#facc15"),
+        (69, 38, "#84cc16"),
+        (31, 0, "#22c55e"),
+    ]
+    return "\n".join(
+        f'<path class="fg-arc-segment" d="{_gauge_arc_path(start, end)}" stroke="{color}" />'
+        for start, end, color in segments
+    )
+
+
 def render_fear_greed_hero(index: object, history: list[dict[str, object]]) -> str:
     score = float(index.index_score)
-    needle_angle = -90.0 + max(0.0, min(100.0, score)) * 1.8
+    clamped_score = max(0.0, min(100.0, score))
+    marker_x, marker_y = _gauge_point(180.0 - clamped_score * 1.8)
     label = fear_greed_label(score)
+    segments_html = render_gauge_segments()
     history_html = "\n".join(render_history_item(item) for item in history)
     return f"""
     <section class="fg-hero">
@@ -703,18 +681,17 @@ def render_fear_greed_hero(index: object, history: list[dict[str, object]]) -> s
         <p class="fg-eyebrow">Community-powered sentiment index</p>
         <h2 class="fg-title">Community Fear &amp; Greed Index</h2>
         <div class="fg-gauge-row">
-          <div class="fg-gauge" style="--needle-angle: {needle_angle:.2f}deg">
-            <div class="fg-arc"></div>
-            <div class="fg-needle"></div>
+          <div class="fg-gauge">
+            <svg viewBox="0 0 320 205" role="img" aria-label="Community Fear and Greed score {score:.0f}">
+              {segments_html}
+              <circle class="fg-marker-halo" cx="{marker_x:.2f}" cy="{marker_y:.2f}" r="12"></circle>
+              <circle class="fg-marker" cx="{marker_x:.2f}" cy="{marker_y:.2f}" r="9"></circle>
+            </svg>
             <div class="fg-gauge-center">
               <div>
                 <strong>{score:.0f}</strong>
                 <span>{html.escape(label)}</span>
               </div>
-            </div>
-            <div class="fg-direction-labels">
-              <span class="greed">Greed</span>
-              <span class="fear">Fear</span>
             </div>
           </div>
           <div class="fg-copy">
