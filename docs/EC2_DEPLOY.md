@@ -67,7 +67,7 @@ pm2 list
 Services:
 
 - `dimae-index-dashboard`: dashboard at port `8765`
-- `dimae-index-hourly-update`: hourly updater, grouped by KST day, collects Naver/Bobaedream/DCInside, also saves `hourly_snapshots`
+- `dimae-index-hourly-update`: hourly updater, collects Naver/Bobaedream/DCInside, saves rolling 24H `hourly_snapshots`, and writes one daily checkpoint during the KST 00:00 hour
 
 ## 6. Enable PM2 on reboot
 

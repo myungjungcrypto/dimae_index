@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     backtest.add_argument("--top", type=int, default=20, help="Rows to show in the Markdown report")
     backtest.add_argument("--output", help="Optional Markdown output path")
 
-    schedule = sub.add_parser("schedule", help="Run automatic updates twice per day")
+    schedule = sub.add_parser("schedule", help="Run automatic scheduled updates")
     schedule.add_argument("--times", default="09:00,21:00", help="Comma-separated local times")
     schedule.add_argument("--hourly", action="store_true", help="Run every hour")
     schedule.add_argument("--timezone", default="Asia/Seoul", help="IANA timezone for schedule times")

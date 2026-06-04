@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 from zoneinfo import ZoneInfo
@@ -12,6 +12,11 @@ KST = ZoneInfo("Asia/Seoul")
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def utc_hours_ago_iso(hours: int, *, now: datetime | None = None) -> str:
+    current = now or datetime.now(timezone.utc)
+    return (current - timedelta(hours=hours)).replace(microsecond=0).isoformat()
 
 
 def kst_today() -> date:

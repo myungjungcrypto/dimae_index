@@ -7,7 +7,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .config import PipelineConfig
-from .pipeline import build_index, calculate_index, score_posts
+from .models import utc_hours_ago_iso
+from .pipeline import calculate_index, score_posts
 from .settings import add_term, load_settings, remove_term
 from .storage import SentimentStore
 
@@ -46,7 +47,6 @@ def serve_dashboard(db_path: Path, *, host: str = "127.0.0.1", port: int = 8765)
                 if list_name == "fomo":
                     config = PipelineConfig(db_path=store.path)
                     score_posts(config, rescore=True)
-                    build_index(config)
             except ValueError as exc:
                 self.send_error(400, str(exc))
                 return
@@ -81,8 +81,10 @@ def serve_dashboard(db_path: Path, *, host: str = "127.0.0.1", port: int = 8765)
 
 def build_summary(store: SentimentStore) -> dict[str, object]:
     index = calculate_index(store, persist=False)
+    since = utc_hours_ago_iso(24)
     return {
         "day": index.day,
+        "window": "rolling_24h",
         "index_score": index.index_score,
         "regime": index.regime,
         "post_count": index.post_count,
@@ -99,14 +101,15 @@ def build_summary(store: SentimentStore) -> dict[str, object]:
         "trend_momentum": index.trend_momentum,
         "spam_rate": index.spam_rate,
         "snapshot_source": index.snapshot_source,
-        "source_breakdown": store.fetch_source_breakdown(day=index.day),
+        "source_breakdown": store.fetch_source_breakdown(since=since),
     }
 
 
 def render_dashboard(store: SentimentStore) -> str:
     index = calculate_index(store, persist=False)
-    top_rows = store.fetch_top_rows(limit=20, day=index.day)
-    source_rows = store.fetch_source_breakdown(day=index.day)
+    since = utc_hours_ago_iso(24)
+    top_rows = store.fetch_top_rows(limit=20, since=since)
+    source_rows = store.fetch_source_breakdown(since=since)
     hourly_rows = store.fetch_hourly_snapshots(limit=12)
     settings = load_settings()
     score_color = score_to_color(index.index_score)
@@ -450,7 +453,7 @@ def render_dashboard(store: SentimentStore) -> str:
 <body>
   <header>
     <h1>Dimaejipyo Sentiment Dashboard</h1>
-    <div class="sub">Latest KST day: {html.escape(index.day)} · {html.escape(baseline_note)} · auto-refresh 60s</div>
+    <div class="sub">Rolling 24H window · KST 기준일: {html.escape(index.day)} · {html.escape(baseline_note)} · auto-refresh 60s</div>
   </header>
   <main>
     <section class="metrics">
@@ -527,8 +530,8 @@ def render_hourly_snapshots(rows: list[dict[str, object]]) -> str:
     return (
         '<section class="table-wrap hourly-wrap">'
         '<div class="table-head">'
-        "<h2>Recent Hourly Snapshots</h2>"
-        "<p>매시간 수집 직후 저장된 KST 기준 지표 상태입니다. 시간 단위 백테스트는 이 기록을 사용합니다.</p>"
+        "<h2>Rolling 24H Snapshots</h2>"
+        "<p>매시간 수집 직후 저장된 최근 24시간 기준 지표입니다. 자정 리셋 없이 한 시간씩 밀려갑니다.</p>"
         "</div>"
         "<table>"
         "<thead>"
@@ -556,7 +559,7 @@ def render_source_breakdown(rows: list[dict[str, object]]) -> str:
         '<section class="table-wrap hourly-wrap">'
         '<div class="table-head">'
         "<h2>Source Breakdown</h2>"
-        "<p>오늘 KST 기준 소스별 기여도입니다. 표본이 한 커뮤니티에 쏠리는지 확인할 때 사용합니다.</p>"
+        "<p>최근 24시간 기준 소스별 기여도입니다. 표본이 한 커뮤니티에 쏠리는지 확인할 때 사용합니다.</p>"
         "</div>"
         "<table>"
         "<thead>"
@@ -668,9 +671,9 @@ def render_term_chip(list_name: str, term: str) -> str:
 
 def build_metric_notes() -> dict[str, str]:
     return {
-        "index_score": "기준선 대비 언급량, FOMO, 리스크, 검색 모멘텀을 합친 0~100 점수.",
-        "posts": "KST 기준 해당 일자에 마지막으로 포착된 전체 글 수입니다. 검색 결과 재발견 글도 포함됩니다.",
-        "new_posts": "KST 기준 해당 일자에 처음 포착됐고, 카페 글번호가 이전 최고값보다 큰 URL 수입니다.",
+        "index_score": "최근 24시간 기준 언급량, FOMO, 리스크, 검색 모멘텀을 합친 0~100 점수.",
+        "posts": "최근 24시간 안에 마지막으로 포착된 전체 글 수입니다. 검색 결과 재발견 글도 포함됩니다.",
+        "new_posts": "최근 24시간 안에 처음 포착됐고, 글번호가 이전 최고값보다 큰 URL 수입니다.",
         "baseline": "비교에 쓰는 과거 스냅샷 일수입니다. 3일 미만이면 판단을 보류합니다.",
         "estimated": "데이터랩으로 추정한 과거 기준선 일수입니다. 실제 관측값이 쌓이면 비중이 낮아집니다.",
         "mentions_delta": "신규 포착 언급량이 기준선보다 얼마나 늘거나 줄었는지입니다.",
@@ -684,12 +687,12 @@ def build_metric_notes() -> dict[str, str]:
 
 def render_explanations() -> str:
     items = [
-        ("Index Score", "60 이상은 위험 선호, 75 이상은 과열 후보입니다. 30 이하는 패닉 후보입니다."),
+        ("Index Score", "최근 24시간 커뮤니티 분위기입니다. 60 이상은 위험 선호, 75 이상은 과열 후보입니다."),
         ("Regime", "baseline_building은 과거 기준선 부족, risk_on은 관심/위험선호 우세, euphoria는 과열 후보입니다."),
-        ("Mentions Δ", "커뮤니티 신규 포착 언급량의 변화입니다. 크게 양수면 관심 급증, 음수면 관심 둔화입니다."),
+        ("Mentions Δ", "최근 24시간 신규 포착 언급량의 변화입니다. 크게 양수면 관심 급증, 음수면 관심 둔화입니다."),
         ("FOMO Δ", "과열 언어가 평소보다 늘었는지 봅니다. 값이 커도 FOMO 원점수가 낮으면 약한 신호입니다."),
         ("Risk Δ", "공포/불신 언어가 평소보다 늘었는지 봅니다. 급등하면 리스크 오프나 패닉 후보입니다."),
-        ("Estimated baseline", "네이버 카페 과거 글 작성일을 완벽히 복원하기 어려워, 데이터랩 30일 추이로 만든 초기 기준선입니다."),
+        ("Daily Score", "하루 대표값은 KST 00시대에 전날 날짜로 저장되는 Rolling 24H Score입니다. 지표는 하나이고 보는 간격만 다릅니다."),
     ]
     rendered = "\n".join(
         f'<div class="explain-item"><strong>{html.escape(title)}</strong><br>{html.escape(body)}</div>'

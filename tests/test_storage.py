@@ -115,6 +115,49 @@ class StorageTest(unittest.TestCase):
             self.assertEqual(rows[0]["snapshot_at"], "2026-06-03T10:00:00+09:00")
             self.assertEqual(rows[0]["day"], "2026-06-03")
 
+    def test_rolling_rows_use_24h_window_and_sequence_newness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SentimentStore(Path(tmp) / "sentiment.sqlite3")
+            store.initialize()
+            old = self._post(
+                "http://cafe.naver.com/dieselmania/100",
+                "윈도우 밖 주식 글",
+                "2026-06-03T00:00:00+00:00",
+            )
+            recent_high = self._post(
+                "http://cafe.naver.com/dieselmania/101",
+                "최근 신규 비트코인 풀매수 글",
+                "2026-06-04T13:00:00+00:00",
+            )
+            recent_low = self._post(
+                "http://cafe.naver.com/dieselmania/99",
+                "최근 발견됐지만 낮은 번호 주식 글",
+                "2026-06-04T14:00:00+00:00",
+            )
+
+            for post in (old, recent_high, recent_low):
+                store.upsert_posts([post])
+                store.upsert_scores([score_post(post)])
+
+            since = "2026-06-04T12:00:00+00:00"
+            until = "2026-06-05T12:00:00+00:00"
+            rows = store.fetch_rolling_score_rows(
+                since=since,
+                until=until,
+                day="2026-06-05",
+            )
+            top_rows = store.fetch_top_rows(limit=10, since=since, until=until)
+            breakdown = store.fetch_source_breakdown(since=since, until=until)
+
+            self.assertEqual({row["url"] for row in rows}, {recent_high.url, recent_low.url})
+            by_url = {row["url"]: row for row in rows}
+            self.assertEqual(by_url[recent_high.url]["is_new"], 1)
+            self.assertEqual(by_url[recent_low.url]["is_new"], 0)
+            self.assertEqual({row["url"] for row in top_rows}, {recent_high.url, recent_low.url})
+            self.assertEqual(len(breakdown), 1)
+            self.assertEqual(breakdown[0]["post_count"], 2)
+            self.assertEqual(breakdown[0]["new_post_count"], 1)
+
     def test_source_breakdown_groups_daily_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = SentimentStore(Path(tmp) / "sentiment.sqlite3")

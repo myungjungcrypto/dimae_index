@@ -14,6 +14,7 @@ from .models import (
     kst_hour_iso,
     kst_today_iso,
     parse_article_identity,
+    utc_hours_ago_iso,
     utc_now_iso,
 )
 
@@ -464,6 +465,58 @@ class SentimentStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def fetch_rolling_score_rows(
+        self,
+        *,
+        hours: int = 24,
+        since: str | None = None,
+        until: str | None = None,
+        day: str | None = None,
+    ) -> list[dict[str, Any]]:
+        since = since or utc_hours_ago_iso(hours)
+        until = until or utc_now_iso()
+        day = day or kst_today_iso()
+        with self.connect() as con:
+            rows = con.execute(
+                """
+                SELECT
+                    ? AS day,
+                    p.source,
+                    p.source_name,
+                    p.title,
+                    p.url,
+                    p.weight,
+                    p.first_seen_at,
+                    p.last_seen_at,
+                    p.seen_count,
+                    p.article_group,
+                    p.article_id,
+                    p.sequence_new,
+                    CASE
+                        WHEN p.first_seen_at >= ?
+                         AND p.first_seen_at <= ?
+                         AND p.sequence_new = 1
+                        THEN 1 ELSE 0
+                    END AS is_new,
+                    s.positive,
+                    s.negative,
+                    s.fomo,
+                    s.fear,
+                    s.distrust,
+                    s.spam,
+                    s.sentiment,
+                    s.fomo_score,
+                    s.risk_score
+                FROM posts p
+                JOIN article_scores s ON s.post_url = p.url
+                WHERE p.last_seen_at >= ?
+                  AND p.last_seen_at <= ?
+                ORDER BY p.last_seen_at DESC
+                """,
+                (day, since, until, since, until),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def fetch_baseline_snapshots(self, *, day: str, limit: int = 30) -> list[dict[str, Any]]:
         with self.connect() as con:
             rows = con.execute(
@@ -659,11 +712,22 @@ class SentimentStore:
         previous_avg = sum(previous) / len(previous)
         return max(-1.0, min(1.0, (latest_avg - previous_avg) / max(previous_avg, 1.0)))
 
-    def fetch_top_rows(self, *, limit: int = 20, day: str | None = None) -> list[dict[str, Any]]:
+    def fetch_top_rows(
+        self,
+        *,
+        limit: int = 20,
+        day: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+    ) -> list[dict[str, Any]]:
         last_seen_day = _kst_day_sql("p.last_seen_at")
-        if day:
+        if since:
+            until = until or utc_now_iso()
+            where_sql = "p.last_seen_at >= ? AND p.last_seen_at <= ?"
+            params: tuple[Any, ...] = (since, until, limit)
+        elif day:
             where_sql = f"{last_seen_day} = ?"
-            params: tuple[Any, ...] = (day, limit)
+            params = (day, limit)
         else:
             where_sql = f"""
                 {last_seen_day} = (
@@ -704,7 +768,55 @@ class SentimentStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def fetch_source_breakdown(self, *, day: str | None = None) -> list[dict[str, Any]]:
+    def fetch_source_breakdown(
+        self,
+        *,
+        day: str | None = None,
+        since: str | None = None,
+        until: str | None = None,
+    ) -> list[dict[str, Any]]:
+        if since:
+            until = until or utc_now_iso()
+            with self.connect() as con:
+                rows = con.execute(
+                    """
+                    WITH scored_rows AS (
+                        SELECT
+                            p.source,
+                            p.source_name,
+                            p.weight,
+                            CASE
+                                WHEN p.first_seen_at >= ?
+                                 AND p.first_seen_at <= ?
+                                 AND p.sequence_new = 1
+                                THEN 1 ELSE 0
+                            END AS is_new,
+                            s.fomo_score,
+                            s.risk_score,
+                            s.spam
+                        FROM posts p
+                        JOIN article_scores s ON s.post_url = p.url
+                        WHERE p.last_seen_at >= ?
+                          AND p.last_seen_at <= ?
+                    )
+                    SELECT
+                        source,
+                        source_name,
+                        COUNT(*) AS post_count,
+                        SUM(is_new) AS new_post_count,
+                        SUM(weight) AS weighted_post_count,
+                        SUM(CASE WHEN is_new = 1 THEN weight ELSE 0 END) AS new_weighted_post_count,
+                        SUM(fomo_score * weight) / NULLIF(SUM(weight), 0) AS fomo_score,
+                        SUM(risk_score * weight) / NULLIF(SUM(weight), 0) AS risk_score,
+                        AVG(CASE WHEN spam > 0 THEN 1.0 ELSE 0.0 END) AS spam_rate
+                    FROM scored_rows
+                    GROUP BY source, source_name
+                    ORDER BY weighted_post_count DESC, post_count DESC
+                    """,
+                    (since, until, since, until),
+                ).fetchall()
+            return [dict(row) for row in rows]
+
         last_seen_day = _kst_day_sql("p.last_seen_at")
         first_seen_day = _kst_day_sql("p.first_seen_at")
         previous_article_max_sql = f"""

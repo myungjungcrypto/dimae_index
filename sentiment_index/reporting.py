@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .models import utc_hours_ago_iso
 from .scoring import DailyIndex
 from .storage import SentimentStore
 
@@ -32,11 +33,12 @@ def format_index(index: DailyIndex) -> str:
 
 
 def build_markdown_report(store: SentimentStore, index: DailyIndex, *, top_limit: int = 12) -> str:
-    rows = store.fetch_top_rows(limit=top_limit)
+    rows = store.fetch_top_rows(limit=top_limit, since=utc_hours_ago_iso(24))
     lines = [
         "# Community Sentiment Index",
         "",
-        f"- Date: {index.day}",
+        "- Window: Rolling 24H",
+        f"- KST date label: {index.day}",
         f"- Score: **{index.index_score}** / 100",
         f"- Regime: **{index.regime}**",
         f"- Posts: {index.post_count} ({index.weighted_post_count} weighted)",

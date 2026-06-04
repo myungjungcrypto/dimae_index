@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import math
 import os
 import sys
-import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, time, timedelta
 from pathlib import Path
 from statistics import median
@@ -14,7 +14,7 @@ from .bobaedream import BobaedreamClient
 from .config import DEFAULT_CONFIG, PipelineConfig
 from .dcinside import DcinsideClient
 from .http import HttpError
-from .models import CommunityPost, TrendPoint, kst_today, utc_now_iso
+from .models import CommunityPost, TrendPoint, kst_today, kst_today_iso, utc_now_iso
 from .naver import MissingNaverCredentials, NaverClient
 from .scoring import DailyIndex, build_daily_index, clamp, score_post
 from .settings import load_runtime_config, load_runtime_lexicon
@@ -146,8 +146,12 @@ def calculate_index(
     day: str | None = None,
     persist: bool = False,
 ) -> DailyIndex:
-    rows = store.fetch_daily_score_rows(day=day)
-    index_day = str(rows[0]["day"]) if rows else day
+    if day:
+        rows = store.fetch_daily_score_rows(day=day)
+        index_day = str(rows[0]["day"]) if rows else day
+    else:
+        rows = store.fetch_rolling_score_rows(hours=24, day=kst_today_iso())
+        index_day = kst_today_iso()
     baseline = store.fetch_baseline_snapshots(day=index_day) if index_day else []
     index = build_daily_index(
         rows,
@@ -211,7 +215,7 @@ def backfill_datalab_baseline(
 
 def build_index(config: PipelineConfig = DEFAULT_CONFIG, *, day: str | None = None) -> PipelineResult:
     store = initialize_store(config)
-    return PipelineResult(daily_index=calculate_index(store, day=day, persist=True))
+    return PipelineResult(daily_index=calculate_index(store, day=day, persist=False))
 
 
 def build_index_with_hourly_snapshot(
@@ -220,8 +224,12 @@ def build_index_with_hourly_snapshot(
     day: str | None = None,
 ) -> PipelineResult:
     store = initialize_store(config)
-    index = calculate_index(store, day=day, persist=True)
+    index = calculate_index(store, day=day, persist=False)
     store.upsert_hourly_snapshot(index)
+    if day:
+        store.upsert_daily_snapshot(index)
+    elif _is_daily_snapshot_time():
+        store.upsert_daily_snapshot(replace(index, day=_daily_checkpoint_day()))
     return PipelineResult(daily_index=index)
 
 
@@ -311,6 +319,14 @@ def _log(message: str, verbose: bool, *, error: bool = False) -> None:
     if verbose:
         stream = sys.stderr if error else sys.stdout
         print(f"[sentiment-index] {message}", file=stream, flush=True)
+
+
+def _is_daily_snapshot_time() -> bool:
+    return datetime.now(ZoneInfo("Asia/Seoul")).hour == 0
+
+
+def _daily_checkpoint_day() -> str:
+    return (datetime.now(ZoneInfo("Asia/Seoul")).date() - timedelta(days=1)).isoformat()
 
 
 def seed_sample_data(config: PipelineConfig = DEFAULT_CONFIG) -> PipelineResult:
