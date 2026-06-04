@@ -517,7 +517,7 @@ class SentimentStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def fetch_baseline_snapshots(self, *, day: str, limit: int = 30) -> list[dict[str, Any]]:
+    def fetch_baseline_snapshots(self, *, day: str, limit: int = 90) -> list[dict[str, Any]]:
         with self.connect() as con:
             rows = con.execute(
                 """

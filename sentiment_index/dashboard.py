@@ -671,10 +671,10 @@ def render_term_chip(list_name: str, term: str) -> str:
 
 def build_metric_notes() -> dict[str, str]:
     return {
-        "index_score": "최근 24시간 기준 언급량, FOMO, 리스크, 검색 모멘텀을 합친 0~100 점수.",
+        "index_score": "최근 24시간 값을 과거 기준선 분포의 분위수로 환산한 0~100 점수입니다.",
         "posts": "최근 24시간 안에 마지막으로 포착된 전체 글 수입니다. 검색 결과 재발견 글도 포함됩니다.",
         "new_posts": "최근 24시간 안에 처음 포착됐고, 글번호가 이전 최고값보다 큰 URL 수입니다.",
-        "baseline": "비교에 쓰는 과거 스냅샷 일수입니다. 3일 미만이면 판단을 보류합니다.",
+        "baseline": "비교에 쓰는 과거 스냅샷 일수입니다. 14일 미만이면 보정 중으로 봅니다.",
         "estimated": "데이터랩으로 추정한 과거 기준선 일수입니다. 실제 관측값이 쌓이면 비중이 낮아집니다.",
         "mentions_delta": "신규 포착 언급량이 기준선보다 얼마나 늘거나 줄었는지입니다.",
         "fomo": "몰빵, 영끌, 신고가 추격 같은 과열 단어 비중입니다.",
@@ -687,11 +687,11 @@ def build_metric_notes() -> dict[str, str]:
 
 def render_explanations() -> str:
     items = [
-        ("Index Score", "최근 24시간 커뮤니티 분위기입니다. 60 이상은 위험 선호, 75 이상은 과열 후보입니다."),
-        ("Regime", "baseline_building은 과거 기준선 부족, risk_on은 관심/위험선호 우세, euphoria는 과열 후보입니다."),
-        ("Mentions Δ", "최근 24시간 신규 포착 언급량의 변화입니다. 크게 양수면 관심 급증, 음수면 관심 둔화입니다."),
-        ("FOMO Δ", "과열 언어가 평소보다 늘었는지 봅니다. 값이 커도 FOMO 원점수가 낮으면 약한 신호입니다."),
-        ("Risk Δ", "공포/불신 언어가 평소보다 늘었는지 봅니다. 급등하면 리스크 오프나 패닉 후보입니다."),
+        ("Index Score", "최근 24시간 관측값이 과거 기준선에서 어느 분위수인지 봅니다. 80 이상은 과열 후보, 20 이하는 패닉 후보입니다."),
+        ("Regime", "calibrating은 기준선 부족, risk_on은 상위권 위험 선호, euphoria는 극단적 과열 후보입니다."),
+        ("Mentions Δ", "최근 24시간 신규 포착 언급량의 평균 대비 변화입니다. 점수 산식은 평균 변화율보다 분위수를 우선합니다."),
+        ("FOMO Δ", "과열 언어가 평소보다 늘었는지 봅니다. 최종 점수에는 FOMO 원점수의 과거 분위수가 반영됩니다."),
+        ("Risk Δ", "공포/불신 언어가 평소보다 늘었는지 봅니다. 최종 점수에서는 Risk 분위수가 높을수록 점수를 낮춥니다."),
         ("Daily Score", "하루 대표값은 KST 00시대에 전날 날짜로 저장되는 Rolling 24H Score입니다. 지표는 하나이고 보는 간격만 다릅니다."),
     ]
     rendered = "\n".join(
@@ -713,7 +713,7 @@ def render_thresholds(index: object) -> str:
         for level, text in signals
     )
     items = [
-        ("Index Score", "≤30 panic · 30~42 risk_off · 60~75 risk_on · ≥75 euphoria"),
+        ("Index Score", "≤20 panic · 20~35 risk_off · 65~80 risk_on · ≥80 euphoria"),
         ("Mentions Δ", "+50% 관심 증가 · +100% 급증 · -40% 관심 둔화"),
         ("FOMO", "원점수 2% 이상 주의 · 5% 이상 과열 후보"),
         ("FOMO Δ", "+100% 주의 · +250% 급증. 단, 원점수가 1% 미만이면 약한 신호로 봅니다."),
@@ -737,15 +737,15 @@ def render_thresholds(index: object) -> str:
 
 def current_signals(index: object) -> list[tuple[str, str]]:
     signals: list[tuple[str, str]] = []
-    if index.baseline_days < 3:
-        signals.append(("info", "기준선 부족: 판정 보류"))
-    elif index.index_score >= 75:
+    if index.baseline_days < 14:
+        signals.append(("info", "기준선 보정 중: 14일 미만"))
+    elif index.index_score >= 80:
         signals.append(("hot", "Index 과열 후보"))
-    elif index.index_score >= 60:
+    elif index.index_score >= 65:
         signals.append(("watch", "Index 위험 선호"))
-    elif index.index_score <= 30:
+    elif index.index_score <= 20:
         signals.append(("hot", "Index 패닉 후보"))
-    elif index.index_score <= 42:
+    elif index.index_score <= 35:
         signals.append(("watch", "Index 위험 회피"))
 
     if index.mention_change_pct >= 1.0:

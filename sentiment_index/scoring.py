@@ -77,7 +77,7 @@ def build_daily_index(
     *,
     baseline_snapshots: list[dict[str, float | int | str]] | None = None,
     trend_momentum: float = 0.0,
-    min_baseline_days: int = 3,
+    min_baseline_days: int = 14,
 ) -> DailyIndex:
     today = kst_today_iso()
     baseline = baseline_snapshots or []
@@ -129,26 +129,38 @@ def build_daily_index(
     fomo_change_pct = _relative_change(fomo, baseline_fomo, floor=0.002)
     risk_change_pct = _relative_change(risk, baseline_risk, floor=0.002)
 
-    sentiment_component = (sentiment + 1.0) / 2.0
     if baseline_days < min_baseline_days:
         index_score = 50.0
-        regime = "baseline_building"
+        regime = "calibrating"
     else:
-        attention_change = clamp(0.5 + (mention_change_pct / 2.0), 0.0, 1.0)
-        fomo_change = clamp(0.5 + (fomo_change_pct / 3.0), 0.0, 1.0)
-        risk_penalty = clamp(0.5 + (risk_change_pct / 3.0), 0.0, 1.0)
-        trend_component = clamp(0.5 + (trend_momentum / 2.0), 0.0, 1.0)
-        quality_component = 1.0 - min(1.0, spam_rate)
-        index_score = 100.0 * (
-            0.32 * attention_change
-            + 0.28 * fomo_change
-            + 0.16 * sentiment_component
-            + 0.12 * trend_component
-            + 0.07 * quality_component
-            + 0.05 * (1.0 - risk_penalty)
+        attention_percentile = _percentile_rank(
+            new_weighted_count,
+            _baseline_values(
+                baseline,
+                "new_weighted_post_count",
+                fallback_key="weighted_post_count",
+            ),
+        )
+        fomo_percentile = _percentile_rank(fomo, _baseline_values(baseline, "fomo_score"))
+        risk_percentile = _percentile_rank(risk, _baseline_values(baseline, "risk_score"))
+        sentiment_percentile = _percentile_rank(sentiment, _baseline_values(baseline, "sentiment"))
+        trend_percentile = _percentile_rank(
+            trend_momentum,
+            _baseline_values(baseline, "trend_momentum"),
+            fallback=clamp(50.0 + (trend_momentum * 50.0)),
+        )
+        spam_percentile = _percentile_rank(spam_rate, _baseline_values(baseline, "spam_rate"))
+
+        index_score = (
+            0.30 * attention_percentile
+            + 0.25 * fomo_percentile
+            + 0.15 * sentiment_percentile
+            + 0.10 * trend_percentile
+            + 0.15 * (100.0 - risk_percentile)
+            + 0.05 * (100.0 - spam_percentile)
         )
         index_score = clamp(index_score)
-        regime = _classify_regime(index_score, risk_penalty, sentiment)
+        regime = _classify_regime(index_score, risk_percentile, sentiment)
 
     return DailyIndex(
         day=str(rows[0].get("day") or today),
@@ -191,21 +203,47 @@ def _average(
     return sum(values) / len(values) if values else 0.0
 
 
+def _baseline_values(
+    rows: list[dict[str, float | int | str]],
+    key: str,
+    *,
+    fallback_key: str | None = None,
+) -> list[float]:
+    values: list[float] = []
+    for row in rows:
+        value = row.get(key)
+        if value in (None, "") and fallback_key:
+            value = row.get(fallback_key)
+        if value not in (None, ""):
+            values.append(float(value))
+    return values
+
+
+def _percentile_rank(current: float, values: list[float], *, fallback: float = 50.0) -> float:
+    if not values:
+        return fallback
+    less = sum(1 for value in values if value < current)
+    equal = sum(1 for value in values if value == current)
+    return clamp(100.0 * (less + 0.5 * equal) / len(values))
+
+
 def _relative_change(current: float, baseline: float, *, floor: float) -> float:
     if baseline <= 0:
         return 0.0
     return max(-1.0, min(5.0, (current - baseline) / max(baseline, floor)))
 
 
-def _classify_regime(index_score: float, risk_penalty: float, sentiment: float) -> str:
-    if risk_penalty >= 0.82 and sentiment < -0.15:
+def _classify_regime(index_score: float, risk_percentile: float, sentiment: float) -> str:
+    if risk_percentile >= 90.0 and sentiment < -0.05:
         return "panic"
-    if index_score >= 75:
+    if index_score >= 80:
         return "euphoria"
-    if index_score >= 60:
+    if index_score >= 65:
         return "risk_on"
-    if index_score <= 30:
+    if index_score <= 20:
         return "panic"
-    if index_score <= 42:
+    if index_score <= 35:
+        return "risk_off"
+    if risk_percentile >= 80.0 and index_score <= 45:
         return "risk_off"
     return "neutral"

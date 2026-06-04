@@ -26,7 +26,7 @@
 - 사전 기반 감성 점수화
 - 처음 발견/마지막 발견 날짜 추적
 - 네이버 카페 글번호 파싱 후 카페별 이전 최고 글번호보다 큰 URL을 신규 포착으로 판정
-- 최근 24시간 롤링 지수와 일별/시간별 스냅샷 저장 후 변화 기반 0~100 커뮤니티 심리 지수 산출
+- 최근 24시간 롤링 지수와 과거 기준선 분위수 기반 0~100 커뮤니티 심리 지수 산출
 - API 키 없이도 샘플 데이터로 산식 검증 가능
 
 ## 빠른 시작
@@ -139,10 +139,11 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
 ## 지표 해석
 
 - 대시보드 상단의 큰 숫자는 최근 24시간 롤링 점수입니다. 자정에 리셋되지 않고 한 시간씩 밀려가며 계산합니다.
+- 점수의 높고 낮음은 최근 24시간 값 자체가 아니라, 과거 `daily_snapshots` 기준선 분포에서 어느 분위수인지로 판단합니다. 기본 비교 범위는 최대 90일입니다.
 - `hourly_snapshots`는 매시간 수집 직후의 최근 24시간 지표를 보존합니다. 시간 단위 백테스트에서는 이 테이블을 사용해서 “그 시간에 실제로 보였던 신호”를 기준으로 검증합니다.
 - `daily_snapshots`는 매일 KST 00시대에 방금 끝난 전날 24시간 롤링 점수를 하루 대표값으로 저장합니다. 일별 백테스트에서는 이 테이블을 사용합니다.
 - `Source Breakdown`은 최근 24시간 기준 소스별 글 수, 신규 글 수, 가중 글 수, FOMO/Risk/Spam 비율을 보여줍니다. 특정 커뮤니티 하나가 지표를 과하게 움직이는지 확인할 때 봅니다.
-- `index_score`: 최근 24시간의 기준선 대비 언급량, FOMO, 리스크, 검색 모멘텀을 합친 0~100 점수
+- `index_score`: 최근 24시간의 언급량, FOMO, 리스크, 검색 모멘텀을 과거 분포 분위수로 정규화한 0~100 점수
 - `attention_score`: 글 수 기반 관심도
 - `new_post_count`: 최근 24시간 안에 처음 포착됐고, 글번호가 이전 최고값보다 큰 글 수
 - `baseline_days`: 과거 일별 스냅샷 기준선 수
@@ -155,14 +156,23 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
 - `trend_momentum`: 네이버 데이터랩 남성 30~49세 검색량의 최근 모멘텀
 - `spam_rate`: 광고/성인/리딩방 신호가 있는 글 비율
 
-최종 `index_score`는 0~100입니다.
+최종 `index_score`는 0~100입니다. 100은 절대적인 완전 과열이 아니라, 기준선 기간 안에서 여러 구성요소가 거의 최상위권이라는 뜻입니다. 0도 절대적인 공포가 아니라, 기준선 기간 안에서 거의 최하위권이라는 뜻입니다.
 
-- 기준선이 3일 미만이면: `baseline_building`
-- 75 이상: `euphoria`
-- 60~75: `risk_on`
-- 42~60: `neutral`
-- 30~42: `risk_off`
-- 30 이하: `panic`
+- 기준선이 14일 미만이면: `calibrating`
+- 80 이상: `euphoria`
+- 65~80: `risk_on`
+- 35~65: `neutral`
+- 20~35: `risk_off`
+- 20 이하: `panic`
+
+현재 합성 점수 가중치는 다음과 같습니다.
+
+- 신규 가중 언급량 분위수: 30%
+- FOMO 원점수 분위수: 25%
+- 긍정/부정 sentiment 분위수: 15%
+- 검색 모멘텀 분위수: 10%
+- Risk 원점수 역분위수: 15%
+- Spam rate 역분위수: 5%
 
 보조 임계값:
 
@@ -189,7 +199,7 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
    - 과거 1년 탐색은 `backtest-datalab`으로 데이터랩 proxy와 가격 일봉을 먼저 비교
 
 3. 후보 파라미터
-   - `index_score` 절대값: 예 60 이상 risk_on, 75 이상 euphoria
+   - `index_score` 절대값: 예 65 이상 risk_on, 80 이상 euphoria
    - `mention_change_pct`: 관심 급증/둔화 임계값
    - `fomo_score`, `fomo_change_pct`: 과열 후보
    - `risk_score`, `risk_change_pct`: 위험 회피/패닉 후보
@@ -246,6 +256,6 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
 - 네이버 카페는 공개 게시글만 API에 노출됩니다.
 - 디시인사이드는 광고와 낚시성 글이 많으므로 기본 가중치를 낮게 둡니다.
 - 감성 분석은 아직 사전 기반입니다. 실제 매매 지표로 쓰려면 최소 2~4주 데이터를 모아 가격/거래량과 상관 검증을 해야 합니다.
-- 첫 며칠은 `baseline_building`으로 보는 것이 정상입니다. 매시간 수집하되, 일별 비교는 같은 기준 시각의 `daily_snapshots`를 사용합니다.
+- 첫 2주 정도는 `calibrating`으로 보는 것이 정상입니다. 매시간 수집하되, 일별 비교는 같은 기준 시각의 `daily_snapshots`를 사용합니다.
 - 대시보드 상단 지표는 최근 24시간 롤링 기준이고, 일별 스냅샷의 날짜 라벨은 KST 기준입니다.
 - 네이버 카페글 검색 API는 카페글의 원 작성일을 안정적으로 제공하지 않으므로, 과거 커뮤니티 글 수를 완벽히 복원하지는 못합니다. `backfill-datalab`은 네이버 데이터랩의 30일 검색 추이로 만든 추정 기준선이며, 관측 기준선이 쌓이면 관측값이 더 중요합니다.
