@@ -6,12 +6,12 @@
 
 이 프로젝트의 최종 목표는 커뮤니티 심리 지표가 실제 시장 움직임을 설명하거나 선행하는지 검증하는 것입니다.
 
-수집한 `index_score`, `new_post_count`, `mention_change_pct`, `fomo_score`, `fomo_change_pct`, `risk_score`, `risk_change_pct`, `trend_momentum`을 나스닥 지수, 코인 지수, 코스피 지수와 함께 백테스트해서 의미 있는 파라미터를 도출합니다.
+수집한 `index_score`, `new_post_count`, `mention_change_pct`, Greed 지표(`fomo_score`, `fomo_change_pct`), Fear 지표(`risk_score`, `risk_change_pct`), `trend_momentum`을 나스닥 지수, 코인 지수, 코스피 지수와 함께 백테스트해서 의미 있는 파라미터를 도출합니다.
 
 검증 대상 예시는 다음과 같습니다.
 
 - 나스닥 지수: 미국 성장주/위험자산 심리와 커뮤니티 위험 선호의 관계
-- 코인 지수: 비트코인 또는 전체 코인 시장과 FOMO/Risk 신호의 관계
+- 코인 지수: 비트코인 또는 전체 코인 시장과 Greed/Fear 신호의 관계
 - 코스피 지수: 국내 주식 관심도와 국장/반도체/2차전지 키워드 반응
 
 백테스트의 목표는 매매 신호를 바로 확정하는 것이 아니라, 어떤 심리 지표가 어떤 시장에서 유의미한지 확인하고 임계값, 관찰 기간, 지연 효과를 찾는 것입니다.
@@ -101,10 +101,10 @@ python3 -m sentiment_index.cli dashboard
 
 브라우저에서 `http://127.0.0.1:8765`를 엽니다.
 
-대시보드의 `Settings`에서 검색 키워드와 FOMO 사전을 추가/삭제할 수 있습니다. 변경값은 `data/settings.json`에 저장됩니다.
+대시보드의 `Settings`에서 검색 키워드와 Greed 사전을 추가/삭제할 수 있습니다. 변경값은 `data/settings.json`에 저장됩니다.
 
 - 검색 키워드 변경: 다음 수집부터 적용
-- FOMO 사전 변경: 저장 즉시 기존 글을 재점수화
+- Greed 사전 변경: 저장 즉시 기존 글을 재점수화
 
 하루 2회 자동 갱신 프로세스를 켜려면:
 
@@ -142,17 +142,17 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
 - 점수의 높고 낮음은 최근 24시간 값 자체가 아니라, 과거 `daily_snapshots` 기준선 분포에서 어느 분위수인지로 판단합니다. 기본 비교 범위는 최대 90일입니다.
 - `hourly_snapshots`는 매시간 수집 직후의 최근 24시간 지표를 보존합니다. 시간 단위 백테스트에서는 이 테이블을 사용해서 “그 시간에 실제로 보였던 신호”를 기준으로 검증합니다.
 - `daily_snapshots`는 매일 KST 00시대에 방금 끝난 전날 24시간 롤링 점수를 하루 대표값으로 저장합니다. 일별 백테스트에서는 이 테이블을 사용합니다.
-- `Source Breakdown`은 최근 24시간 기준 소스별 글 수, 신규 글 수, 가중 글 수, FOMO/Risk/Spam 비율을 보여줍니다. 특정 커뮤니티 하나가 지표를 과하게 움직이는지 확인할 때 봅니다.
-- `index_score`: 최근 24시간의 언급량, FOMO, 리스크, 검색 모멘텀을 과거 분포 분위수로 정규화한 0~100 점수
+- `Source Breakdown`은 최근 24시간 기준 소스별 글 수, 신규 글 수, 가중 글 수, Greed/Fear/Spam 비율을 보여줍니다. 특정 커뮤니티 하나가 지표를 과하게 움직이는지 확인할 때 봅니다.
+- `index_score`: 최근 24시간의 언급량, Greed, Fear, 검색 모멘텀을 과거 분포 분위수로 정규화한 0~100 점수
 - `attention_score`: 글 수 기반 관심도
 - `new_post_count`: 최근 24시간 안에 처음 포착됐고, 글번호가 이전 최고값보다 큰 글 수
 - `baseline_days`: 과거 일별 스냅샷 기준선 수
 - `mention_change_pct`: 과거 기준선 대비 신규 언급량 변화율
 - `sentiment`: 긍정/부정 키워드 균형, -1~1
-- `fomo_score`: 몰빵, 영끌, 신고가 추격 같은 과열 언어 비중
-- `fomo_change_pct`: 과거 기준선 대비 FOMO 비중 변화율
-- `risk_score`: 공포, 불신, 스캠, 출금정지 등 리스크 언어 비중
-- `risk_change_pct`: 과거 기준선 대비 리스크 비중 변화율
+- `fomo_score`: 화면에서는 Greed로 표시합니다. 몰빵, 영끌, 신고가 추격 같은 탐욕/추격매수 언어 비중입니다.
+- `fomo_change_pct`: 과거 기준선 대비 Greed 비중 변화율
+- `risk_score`: 화면에서는 Fear로 표시합니다. 공포, 불신, 스캠, 출금정지 등 공포 언어 비중입니다.
+- `risk_change_pct`: 과거 기준선 대비 Fear 비중 변화율
 - `trend_momentum`: 네이버 데이터랩 남성 30~49세 검색량의 최근 모멘텀
 - `spam_rate`: 광고/성인/리딩방 신호가 있는 글 비율
 
@@ -168,19 +168,19 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
 현재 합성 점수 가중치는 다음과 같습니다.
 
 - 신규 가중 언급량 분위수: 30%
-- FOMO 원점수 분위수: 25%
+- Greed 원점수 분위수: 25%
 - 긍정/부정 sentiment 분위수: 15%
 - 검색 모멘텀 분위수: 10%
-- Risk 원점수 역분위수: 15%
+- Fear 원점수 역분위수: 15%
 - Spam rate 역분위수: 5%
 
 보조 임계값:
 
 - `mention_change_pct`: +50% 관심 증가, +100% 급증, -40% 관심 둔화
-- `fomo_score`: 2% 이상 주의, 5% 이상 과열 후보
-- `fomo_change_pct`: +100% 주의, +250% 급증. 단, 원점수가 1% 미만이면 약한 신호로 봅니다.
-- `risk_score`: 5% 이상 스트레스, 10% 이상 고위험 후보
-- `risk_change_pct`: +100% 주의, +250% 급증
+- Greed(`fomo_score`): 2% 이상 주의, 5% 이상 과열 후보
+- Greed 변화율(`fomo_change_pct`): +100% 주의, +250% 급증. 단, 원점수가 1% 미만이면 약한 신호로 봅니다.
+- Fear(`risk_score`): 5% 이상 스트레스, 10% 이상 고위험 후보
+- Fear 변화율(`risk_change_pct`): +100% 주의, +250% 급증
 - `trend_momentum`: ±25% 이상이면 검색 관심 변화
 - `spam_rate`: 10% 이상 노이즈 주의, 20% 이상 지표 신뢰도 낮음
 
@@ -201,8 +201,8 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
 3. 후보 파라미터
    - `index_score` 절대값: 예 65 이상 risk_on, 80 이상 euphoria
    - `mention_change_pct`: 관심 급증/둔화 임계값
-   - `fomo_score`, `fomo_change_pct`: 과열 후보
-   - `risk_score`, `risk_change_pct`: 위험 회피/패닉 후보
+   - Greed(`fomo_score`, `fomo_change_pct`): 과열 후보
+   - Fear(`risk_score`, `risk_change_pct`): 위험 회피/패닉 후보
    - 관찰 기간: 1일, 3일, 7일 이동 평균
    - 지연 효과: 신호 발생 당일, 다음날, 3일 뒤 수익률
 
@@ -215,7 +215,7 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
 
 5. 운영 원칙
    - 검색어 변경은 변경 시점 이후 데이터부터 반영합니다.
-   - FOMO/Risk 사전 변경은 기존 저장 글의 점수를 재계산할 수 있으므로 변경 이력을 기록하는 것이 좋습니다.
+   - Greed/Fear 사전 변경은 기존 저장 글의 점수를 재계산할 수 있으므로 변경 이력을 기록하는 것이 좋습니다.
    - 최소 2~4주 이상 관측 데이터가 쌓인 뒤 백테스트 결과를 신뢰합니다.
    - 과최적화를 피하기 위해 in-sample/out-of-sample 구간을 나눕니다.
    - 데이터랩 백테스트는 과거 proxy 탐색용이고, 실제 커뮤니티 지표의 검증은 앞으로 쌓이는 `daily_snapshots`/`hourly_snapshots`로 별도 수행합니다.
@@ -226,7 +226,7 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
 
 `backtest-datalab`은 과거 커뮤니티 원문을 완벽히 복원할 수 없는 문제를 우회하기 위한 탐색 도구입니다.
 
-- 데이터랩 신호: `crypto`, `stocks`, `fomo`, `risk`
+- 데이터랩 신호: `crypto`, `stocks`, `fomo`(Greed), `risk`(Fear)
 - 신호 형태: 원점수 `*_level`, 7일 평균 모멘텀 `*_momentum_7d`
 - 가격 데이터:
   - 비트코인: Binance `BTCUSDT` 일봉
@@ -245,7 +245,7 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
 - 나이키매니아: 소비재/리셀 성향이 섞인 남성 커뮤니티. 기본 가중치 `0.8`
 - 보배드림 자유게시판: 30~50대 남성 일반 대중 심리 보완 표본. 기본 가중치 `0.7`
 - 보배드림 베스트글: 보배드림 내 확산 글 표본. 기본 가중치 `1.0`
-- 디시 비트코인 갤러리: 코인 과열/FOMO 고속 감지용. 기본 가중치 `0.7`
+- 디시 비트코인 갤러리: 코인 과열/Greed 고속 감지용. 기본 가중치 `0.7`
 - 디시 주식 갤러리: 주식 과열/패닉 고속 감지용. 기본 가중치 `0.6`
 
 보배드림과 디시인사이드는 공개 목록 HTML에서 제목/URL/추천/조회수 중심으로 수집합니다. 일반 커뮤니티 특성상 노이즈가 많으므로, 대시보드의 `Source Breakdown`과 `spam_rate`를 같이 보면서 가중치를 조정합니다.

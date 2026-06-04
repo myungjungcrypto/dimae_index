@@ -21,10 +21,10 @@ def format_index(index: DailyIndex) -> str:
             f"mention_change_pct: {index.mention_change_pct}",
             f"attention_score: {index.attention_score}",
             f"sentiment: {index.sentiment}",
-            f"fomo_score: {index.fomo_score}",
-            f"fomo_change_pct: {index.fomo_change_pct}",
-            f"risk_score: {index.risk_score}",
-            f"risk_change_pct: {index.risk_change_pct}",
+            f"greed_score: {index.fomo_score}",
+            f"greed_change_pct: {index.fomo_change_pct}",
+            f"fear_score: {index.risk_score}",
+            f"fear_change_pct: {index.risk_change_pct}",
             f"trend_momentum: {index.trend_momentum}",
             f"spam_rate: {index.spam_rate}",
             f"snapshot_source: {index.snapshot_source}",
@@ -49,10 +49,10 @@ def build_markdown_report(store: SentimentStore, index: DailyIndex, *, top_limit
         f"- Mention change: {index.mention_change_pct:.2%}",
         f"- Attention: {index.attention_score}",
         f"- Sentiment: {index.sentiment}",
-        f"- FOMO: {index.fomo_score}",
-        f"- FOMO change: {index.fomo_change_pct:.2%}",
-        f"- Risk: {index.risk_score}",
-        f"- Risk change: {index.risk_change_pct:.2%}",
+        f"- Greed: {index.fomo_score}",
+        f"- Greed change: {index.fomo_change_pct:.2%}",
+        f"- Fear: {index.risk_score}",
+        f"- Fear change: {index.risk_change_pct:.2%}",
         f"- Search trend momentum: {index.trend_momentum:.2%}",
         f"- Spam rate: {index.spam_rate}",
         "",
@@ -66,7 +66,7 @@ def build_markdown_report(store: SentimentStore, index: DailyIndex, *, top_limit
             lines.append(
                 "- "
                 f"[{row['source_name']}] {row['title']} "
-                f"(sentiment={row['sentiment']:.2f}, fomo={row['fomo_score']:.2f}, risk={row['risk_score']:.2f})"
+                f"(sentiment={row['sentiment']:.2f}, greed={row['fomo_score']:.2f}, fear={row['risk_score']:.2f})"
             )
             lines.append(f"  {row['url']}")
     return "\n".join(lines) + "\n"

@@ -468,10 +468,10 @@ def render_dashboard(store: SentimentStore) -> str:
       <div class="metric"><strong>Baseline</strong><span>{index.baseline_days}d</span><small>{html.escape(metric_notes["baseline"])}</small></div>
       <div class="metric"><strong>Estimated</strong><span>{index.baseline_estimated_days}d</span><small>{html.escape(metric_notes["estimated"])}</small></div>
       <div class="metric"><strong>Mentions Δ</strong><span>{format_pct(index.mention_change_pct)}</span><small>{html.escape(metric_notes["mentions_delta"])}</small></div>
-      <div class="metric"><strong>FOMO</strong><span>{format_rate(index.fomo_score)}</span><small>{html.escape(metric_notes["fomo"])}</small></div>
-      <div class="metric"><strong>FOMO Δ</strong><span>{format_pct(index.fomo_change_pct)}</span><small>{html.escape(metric_notes["fomo_delta"])}</small></div>
-      <div class="metric"><strong>Risk</strong><span>{format_rate(index.risk_score)}</span><small>{html.escape(metric_notes["risk"])}</small></div>
-      <div class="metric"><strong>Risk Δ</strong><span>{format_pct(index.risk_change_pct)}</span><small>{html.escape(metric_notes["risk_delta"])}</small></div>
+      <div class="metric"><strong>Greed</strong><span>{format_rate(index.fomo_score)}</span><small>{html.escape(metric_notes["fomo"])}</small></div>
+      <div class="metric"><strong>Greed Δ</strong><span>{format_pct(index.fomo_change_pct)}</span><small>{html.escape(metric_notes["fomo_delta"])}</small></div>
+      <div class="metric"><strong>Fear</strong><span>{format_rate(index.risk_score)}</span><small>{html.escape(metric_notes["risk"])}</small></div>
+      <div class="metric"><strong>Fear Δ</strong><span>{format_pct(index.risk_change_pct)}</span><small>{html.escape(metric_notes["risk_delta"])}</small></div>
       <div class="metric"><strong>Search Δ</strong><span>{format_pct(index.trend_momentum)}</span><small>{html.escape(metric_notes["search_delta"])}</small></div>
     </section>
     {explanation_html}
@@ -486,8 +486,8 @@ def render_dashboard(store: SentimentStore) -> str:
             <th>Source</th>
             <th>Title</th>
             <th>Sentiment</th>
-            <th>FOMO</th>
-            <th>Risk</th>
+            <th>Greed</th>
+            <th>Fear</th>
           </tr>
         </thead>
         <tbody>
@@ -541,8 +541,8 @@ def render_hourly_snapshots(rows: list[dict[str, object]]) -> str:
         "<th>Regime</th>"
         "<th>Posts</th>"
         "<th>New</th>"
-        "<th>FOMO</th>"
-        "<th>Risk</th>"
+        "<th>Greed</th>"
+        "<th>Fear</th>"
         "</tr>"
         "</thead>"
         f"<tbody>{row_html}</tbody>"
@@ -569,8 +569,8 @@ def render_source_breakdown(rows: list[dict[str, object]]) -> str:
         "<th>New</th>"
         "<th>Weighted</th>"
         "<th>New W.</th>"
-        "<th>FOMO</th>"
-        "<th>Risk</th>"
+        "<th>Greed</th>"
+        "<th>Fear</th>"
         "<th>Spam</th>"
         "</tr>"
         "</thead>"
@@ -623,10 +623,10 @@ def render_settings(settings: dict[str, object]) -> str:
             "검색어 추가",
         )
         + render_term_editor(
-            "FOMO Dictionary",
+            "Greed Dictionary",
             "fomo",
             fomo_terms,
-            "FOMO 단어 추가",
+            "Greed 단어 추가",
         )
         + "</div>"
         "</section>"
@@ -677,10 +677,10 @@ def build_metric_notes() -> dict[str, str]:
         "baseline": "비교에 쓰는 과거 스냅샷 일수입니다. 14일 미만이면 보정 중으로 봅니다.",
         "estimated": "데이터랩으로 추정한 과거 기준선 일수입니다. 실제 관측값이 쌓이면 비중이 낮아집니다.",
         "mentions_delta": "신규 포착 언급량이 기준선보다 얼마나 늘거나 줄었는지입니다.",
-        "fomo": "몰빵, 영끌, 신고가 추격 같은 과열 단어 비중입니다.",
-        "fomo_delta": "FOMO 비중이 과거 기준선 대비 얼마나 변했는지입니다.",
+        "fomo": "놓칠까 봐 따라붙는 탐욕/추격매수 단어 비중입니다.",
+        "fomo_delta": "Greed 비중이 과거 기준선 대비 얼마나 변했는지입니다.",
         "risk": "폭락, 청산, 상폐, 조작, 해킹 같은 공포/불신 단어 비중입니다.",
-        "risk_delta": "리스크 단어 비중이 과거 기준선 대비 얼마나 변했는지입니다.",
+        "risk_delta": "Fear 비중이 과거 기준선 대비 얼마나 변했는지입니다.",
         "search_delta": "남성 30~49세 네이버 검색량의 최근 모멘텀입니다.",
     }
 
@@ -690,8 +690,8 @@ def render_explanations() -> str:
         ("Index Score", "최근 24시간 관측값이 과거 기준선에서 어느 분위수인지 봅니다. 80 이상은 과열 후보, 20 이하는 패닉 후보입니다."),
         ("Regime", "calibrating은 기준선 부족, risk_on은 상위권 위험 선호, euphoria는 극단적 과열 후보입니다."),
         ("Mentions Δ", "최근 24시간 신규 포착 언급량의 평균 대비 변화입니다. 점수 산식은 평균 변화율보다 분위수를 우선합니다."),
-        ("FOMO Δ", "과열 언어가 평소보다 늘었는지 봅니다. 최종 점수에는 FOMO 원점수의 과거 분위수가 반영됩니다."),
-        ("Risk Δ", "공포/불신 언어가 평소보다 늘었는지 봅니다. 최종 점수에서는 Risk 분위수가 높을수록 점수를 낮춥니다."),
+        ("Greed Δ", "탐욕/추격매수 언어가 평소보다 늘었는지 봅니다. 최종 점수에는 Greed 원점수의 과거 분위수가 반영됩니다."),
+        ("Fear Δ", "공포/불신 언어가 평소보다 늘었는지 봅니다. 최종 점수에서는 Fear 분위수가 높을수록 점수를 낮춥니다."),
         ("Daily Score", "하루 대표값은 KST 00시대에 전날 날짜로 저장되는 Rolling 24H Score입니다. 지표는 하나이고 보는 간격만 다릅니다."),
     ]
     rendered = "\n".join(
@@ -715,10 +715,10 @@ def render_thresholds(index: object) -> str:
     items = [
         ("Index Score", "≤20 panic · 20~35 risk_off · 65~80 risk_on · ≥80 euphoria"),
         ("Mentions Δ", "+50% 관심 증가 · +100% 급증 · -40% 관심 둔화"),
-        ("FOMO", "원점수 2% 이상 주의 · 5% 이상 과열 후보"),
-        ("FOMO Δ", "+100% 주의 · +250% 급증. 단, 원점수가 1% 미만이면 약한 신호로 봅니다."),
-        ("Risk", "원점수 5% 이상 스트레스 · 10% 이상 고위험 후보"),
-        ("Risk Δ", "+100% 주의 · +250% 급증. 가격 하락/뉴스와 함께 확인합니다."),
+        ("Greed", "원점수 2% 이상 주의 · 5% 이상 과열 후보"),
+        ("Greed Δ", "+100% 주의 · +250% 급증. 단, 원점수가 1% 미만이면 약한 신호로 봅니다."),
+        ("Fear", "원점수 5% 이상 스트레스 · 10% 이상 고위험 후보"),
+        ("Fear Δ", "+100% 주의 · +250% 급증. 가격 하락/뉴스와 함께 확인합니다."),
         ("Search Δ", "±25% 이상이면 검색 모멘텀 변화로 봅니다."),
         ("Spam Rate", "10% 이상 노이즈 주의 · 20% 이상이면 지표 신뢰도 낮음"),
     ]
@@ -756,18 +756,18 @@ def current_signals(index: object) -> list[tuple[str, str]]:
         signals.append(("cool", "언급량 둔화"))
 
     if index.fomo_score >= 0.05:
-        signals.append(("hot", "FOMO 원점수 과열"))
+        signals.append(("hot", "Greed 원점수 과열"))
     elif index.fomo_score >= 0.02:
-        signals.append(("watch", "FOMO 원점수 주의"))
+        signals.append(("watch", "Greed 원점수 주의"))
     elif index.fomo_change_pct >= 1.0:
-        signals.append(("info", "FOMO 변화율 상승, 원점수는 낮음"))
+        signals.append(("info", "Greed 변화율 상승, 원점수는 낮음"))
 
     if index.risk_score >= 0.10:
-        signals.append(("hot", "Risk 원점수 고위험"))
+        signals.append(("hot", "Fear 원점수 고위험"))
     elif index.risk_score >= 0.05:
-        signals.append(("watch", "Risk 원점수 주의"))
+        signals.append(("watch", "Fear 원점수 주의"))
     elif index.risk_change_pct >= 1.0:
-        signals.append(("info", "Risk 변화율 상승, 원점수는 낮음"))
+        signals.append(("info", "Fear 변화율 상승, 원점수는 낮음"))
 
     if index.trend_momentum >= 0.25:
         signals.append(("watch", "검색 관심 증가"))
