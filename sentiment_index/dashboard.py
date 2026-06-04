@@ -203,31 +203,36 @@ def render_dashboard(store: SentimentStore) -> str:
     }}
     .fg-gauge-row {{
       display: grid;
-      grid-template-columns: 190px minmax(0, 1fr);
+      grid-template-columns: 220px minmax(0, 1fr);
       gap: 20px;
       align-items: center;
     }}
     .fg-gauge {{
       position: relative;
-      width: 190px;
-      aspect-ratio: 1;
+      width: 220px;
+      height: 220px;
+    }}
+    .fg-arc {{
+      position: absolute;
+      inset: 0;
       border-radius: 50%;
+      clip-path: inset(0 0 0 50%);
       background:
         conic-gradient(
-          from 225deg,
-          var(--fear) 0deg 54deg,
-          var(--worry) 54deg 94.5deg,
-          #cbd5e1 94.5deg 175.5deg,
-          var(--greed) 175.5deg 216deg,
-          var(--extreme-greed) 216deg 270deg,
-          #edf2f7 270deg 360deg
+          from 0deg,
+          var(--extreme-greed) 0deg 36deg,
+          var(--greed) 36deg 72deg,
+          #cbd5e1 72deg 108deg,
+          var(--worry) 108deg 144deg,
+          var(--fear) 144deg 180deg,
+          transparent 180deg 360deg
         );
       box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
     }}
-    .fg-gauge::before {{
+    .fg-arc::before {{
       content: "";
       position: absolute;
-      inset: 22px;
+      inset: 27px;
       border-radius: 50%;
       background: #ffffff;
       border: 1px solid var(--line);
@@ -237,7 +242,7 @@ def render_dashboard(store: SentimentStore) -> str:
       left: calc(50% - 2px);
       bottom: 50%;
       width: 4px;
-      height: 76px;
+      height: 86px;
       border-radius: 999px;
       background: #111827;
       transform-origin: 50% 100%;
@@ -257,7 +262,9 @@ def render_dashboard(store: SentimentStore) -> str:
     }}
     .fg-gauge-center {{
       position: absolute;
-      inset: 52px;
+      left: 22px;
+      top: 68px;
+      width: 112px;
       z-index: 3;
       display: grid;
       place-items: center;
@@ -275,6 +282,28 @@ def render_dashboard(store: SentimentStore) -> str:
       color: var(--ink);
       font-size: 13px;
       font-weight: 750;
+    }}
+    .fg-direction-labels {{
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      pointer-events: none;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }}
+    .fg-direction-labels .greed {{
+      position: absolute;
+      top: 12px;
+      right: 8px;
+      color: var(--greed);
+    }}
+    .fg-direction-labels .fear {{
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      color: var(--fear);
     }}
     .fg-copy h2 {{
       margin: 0;
@@ -662,7 +691,7 @@ def _first_form_value(payload: dict[str, list[str]], name: str) -> str:
 
 def render_fear_greed_hero(index: object, history: list[dict[str, object]]) -> str:
     score = float(index.index_score)
-    needle_angle = -135.0 + max(0.0, min(100.0, score)) * 2.7
+    needle_angle = 180.0 - max(0.0, min(100.0, score)) * 1.8
     label = fear_greed_label(score)
     history_html = "\n".join(render_history_item(item) for item in history)
     return f"""
@@ -672,12 +701,17 @@ def render_fear_greed_hero(index: object, history: list[dict[str, object]]) -> s
         <h2 class="fg-title">Community Fear &amp; Greed Index</h2>
         <div class="fg-gauge-row">
           <div class="fg-gauge" style="--needle-angle: {needle_angle:.2f}deg">
+            <div class="fg-arc"></div>
             <div class="fg-needle"></div>
             <div class="fg-gauge-center">
               <div>
                 <strong>{score:.0f}</strong>
                 <span>{html.escape(label)}</span>
               </div>
+            </div>
+            <div class="fg-direction-labels">
+              <span class="greed">Greed</span>
+              <span class="fear">Fear</span>
             </div>
           </div>
           <div class="fg-copy">
