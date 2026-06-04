@@ -641,6 +641,19 @@ class SentimentStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def fetch_daily_snapshots(self, *, limit: int = 365) -> list[dict[str, Any]]:
+        with self.connect() as con:
+            rows = con.execute(
+                """
+                SELECT *
+                FROM daily_snapshots
+                ORDER BY day DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def fetch_trend_period_rows(self) -> list[dict[str, Any]]:
         with self.connect() as con:
             rows = con.execute(

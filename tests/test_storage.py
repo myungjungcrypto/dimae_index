@@ -115,6 +115,36 @@ class StorageTest(unittest.TestCase):
             self.assertEqual(rows[0]["snapshot_at"], "2026-06-03T10:00:00+09:00")
             self.assertEqual(rows[0]["day"], "2026-06-03")
 
+    def test_daily_snapshots_are_fetched_descending(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = SentimentStore(Path(tmp) / "sentiment.sqlite3")
+            store.initialize()
+            for day in ("2026-06-01", "2026-06-02"):
+                index = build_daily_index(
+                    [
+                        {
+                            "day": day,
+                            "weight": 1.0,
+                            "is_new": 1,
+                            "positive": 1,
+                            "negative": 0,
+                            "fomo": 1,
+                            "fear": 0,
+                            "distrust": 0,
+                            "spam": 0,
+                            "sentiment": 1.0,
+                            "fomo_score": 0.5,
+                            "risk_score": 0.0,
+                        }
+                    ],
+                    min_baseline_days=9999,
+                )
+                store.upsert_daily_snapshot(index)
+
+            rows = store.fetch_daily_snapshots(limit=2)
+
+            self.assertEqual([row["day"] for row in rows], ["2026-06-02", "2026-06-01"])
+
     def test_rolling_rows_use_24h_window_and_sequence_newness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = SentimentStore(Path(tmp) / "sentiment.sqlite3")

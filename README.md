@@ -138,6 +138,8 @@ python3 -m sentiment_index.cli backtest-datalab --days 365 --top 30 --output dat
 
 ## 지표 해석
 
+화면 구조는 CoinMarketCap의 Fear & Greed Index처럼 현재 점수, Historical Values, Yearly High/Low를 먼저 보여주는 형태를 따릅니다. 다만 입력 데이터는 가격/거래량/변동성이 아니라 커뮤니티 글, Greed/Fear 사전, 검색 모멘텀, 소스별 가중치입니다.
+
 - 대시보드 상단의 큰 숫자는 최근 24시간 롤링 점수입니다. 자정에 리셋되지 않고 한 시간씩 밀려가며 계산합니다.
 - 점수의 높고 낮음은 최근 24시간 값 자체가 아니라, 과거 `daily_snapshots` 기준선 분포에서 어느 분위수인지로 판단합니다. 기본 비교 범위는 최대 90일입니다.
 - `hourly_snapshots`는 매시간 수집 직후의 최근 24시간 지표를 보존합니다. 시간 단위 백테스트에서는 이 테이블을 사용해서 “그 시간에 실제로 보였던 신호”를 기준으로 검증합니다.

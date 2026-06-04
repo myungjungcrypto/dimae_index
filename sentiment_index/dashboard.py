@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import json
+from datetime import date, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -111,10 +112,12 @@ def render_dashboard(store: SentimentStore) -> str:
     top_rows = store.fetch_top_rows(limit=20, since=since)
     source_rows = store.fetch_source_breakdown(since=since)
     hourly_rows = store.fetch_hourly_snapshots(limit=12)
+    daily_rows = store.fetch_daily_snapshots(limit=365)
     settings = load_settings()
     score_color = score_to_color(index.index_score)
     baseline_note = baseline_label(index.baseline_days, index.baseline_estimated_days)
     metric_notes = build_metric_notes()
+    hero_html = render_fear_greed_hero(index, build_fear_greed_history(index, daily_rows))
     explanation_html = render_explanations()
     threshold_html = render_thresholds(index)
     source_html = render_source_breakdown(source_rows)
@@ -140,6 +143,11 @@ def render_dashboard(store: SentimentStore) -> str:
       --panel: #ffffff;
       --bg: #f5f7fb;
       --accent: {score_color};
+      --fear: #dc2626;
+      --worry: #f97316;
+      --neutral: #64748b;
+      --greed: #16a34a;
+      --extreme-greed: #15803d;
     }}
     * {{ box-sizing: border-box; }}
     body {{
@@ -169,9 +177,162 @@ def render_dashboard(store: SentimentStore) -> str:
       margin: 0 auto;
       padding: 24px;
     }}
+    .fg-hero {{
+      display: grid;
+      grid-template-columns: minmax(340px, 0.95fr) minmax(0, 1.05fr);
+      margin-bottom: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }}
+    .fg-main {{
+      padding: 22px;
+      border-right: 1px solid var(--line);
+    }}
+    .fg-eyebrow {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }}
+    .fg-title {{
+      margin: 6px 0 18px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }}
+    .fg-gauge-row {{
+      display: grid;
+      grid-template-columns: 190px minmax(0, 1fr);
+      gap: 20px;
+      align-items: center;
+    }}
+    .fg-gauge {{
+      position: relative;
+      width: 190px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background:
+        conic-gradient(
+          from 225deg,
+          var(--fear) 0deg 54deg,
+          var(--worry) 54deg 94.5deg,
+          #cbd5e1 94.5deg 175.5deg,
+          var(--greed) 175.5deg 216deg,
+          var(--extreme-greed) 216deg 270deg,
+          #edf2f7 270deg 360deg
+        );
+      box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+    }}
+    .fg-gauge::before {{
+      content: "";
+      position: absolute;
+      inset: 22px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 1px solid var(--line);
+    }}
+    .fg-needle {{
+      position: absolute;
+      left: calc(50% - 2px);
+      bottom: 50%;
+      width: 4px;
+      height: 76px;
+      border-radius: 999px;
+      background: #111827;
+      transform-origin: 50% 100%;
+      transform: rotate(var(--needle-angle));
+      z-index: 2;
+    }}
+    .fg-needle::after {{
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: -8px;
+      width: 16px;
+      height: 16px;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: #111827;
+    }}
+    .fg-gauge-center {{
+      position: absolute;
+      inset: 52px;
+      z-index: 3;
+      display: grid;
+      place-items: center;
+      text-align: center;
+    }}
+    .fg-gauge-center strong {{
+      display: block;
+      color: var(--accent);
+      font-size: 42px;
+      line-height: 1;
+    }}
+    .fg-gauge-center span {{
+      display: block;
+      margin-top: 6px;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 750;
+    }}
+    .fg-copy h2 {{
+      margin: 0;
+      color: var(--accent);
+      font-size: 28px;
+      letter-spacing: 0;
+    }}
+    .fg-copy p {{
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }}
+    .fg-scale {{
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 11px;
+    }}
+    .fg-history {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
+    .fg-history-item {{
+      min-height: 112px;
+      padding: 16px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }}
+    .fg-history-item:nth-child(2n) {{
+      border-right: 0;
+    }}
+    .fg-history-item:nth-last-child(-n + 2) {{
+      border-bottom: 0;
+    }}
+    .fg-history-item small {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }}
+    .fg-history-item strong {{
+      display: block;
+      margin-top: 8px;
+      color: var(--ink);
+      font-size: 24px;
+    }}
+    .fg-history-item span {{
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }}
     .metrics {{
       display: grid;
-      grid-template-columns: 1.2fr repeat(4, 1fr);
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 12px;
       margin-bottom: 18px;
     }}
@@ -200,11 +361,6 @@ def render_dashboard(store: SentimentStore) -> str:
       color: var(--muted);
       font-size: 12px;
       line-height: 1.35;
-    }}
-    .score span {{
-      color: var(--accent);
-      font-size: 42px;
-      line-height: 1;
     }}
     .regime {{
       display: inline-flex;
@@ -439,6 +595,10 @@ def render_dashboard(store: SentimentStore) -> str:
       header {{ padding: 18px; }}
       main {{ padding: 14px; }}
       .metrics {{ grid-template-columns: 1fr 1fr; }}
+      .fg-hero {{ grid-template-columns: 1fr; }}
+      .fg-main {{ border-right: 0; border-bottom: 1px solid var(--line); }}
+      .fg-gauge-row {{ grid-template-columns: 1fr; justify-items: center; text-align: center; }}
+      .fg-history {{ grid-template-columns: 1fr 1fr; }}
       .explain-grid {{ grid-template-columns: 1fr; }}
       .threshold-grid {{ grid-template-columns: 1fr; }}
       .settings-grid {{ grid-template-columns: 1fr; }}
@@ -452,17 +612,12 @@ def render_dashboard(store: SentimentStore) -> str:
 </head>
 <body>
   <header>
-    <h1>Dimaejipyo Sentiment Dashboard</h1>
+    <h1>Dimaejipyo Community Fear & Greed</h1>
     <div class="sub">Rolling 24H window · KST 기준일: {html.escape(index.day)} · {html.escape(baseline_note)} · auto-refresh 60s</div>
   </header>
   <main>
+    {hero_html}
     <section class="metrics">
-      <div class="metric score">
-        <strong>Index Score</strong>
-        <span>{index.index_score:.2f}</span>
-        <div class="regime">{html.escape(index.regime)}</div>
-        <small>{html.escape(metric_notes["index_score"])}</small>
-      </div>
       <div class="metric"><strong>Posts</strong><span>{index.post_count}</span><small>{html.escape(metric_notes["posts"])}</small></div>
       <div class="metric"><strong>New Posts</strong><span>{index.new_post_count}</span><small>{html.escape(metric_notes["new_posts"])}</small></div>
       <div class="metric"><strong>Baseline</strong><span>{index.baseline_days}d</span><small>{html.escape(metric_notes["baseline"])}</small></div>
@@ -503,6 +658,112 @@ def render_dashboard(store: SentimentStore) -> str:
 def _first_form_value(payload: dict[str, list[str]], name: str) -> str:
     values = payload.get(name)
     return values[0].strip() if values else ""
+
+
+def render_fear_greed_hero(index: object, history: list[dict[str, object]]) -> str:
+    score = float(index.index_score)
+    needle_angle = -135.0 + max(0.0, min(100.0, score)) * 2.7
+    label = fear_greed_label(score)
+    history_html = "\n".join(render_history_item(item) for item in history)
+    return f"""
+    <section class="fg-hero">
+      <div class="fg-main">
+        <p class="fg-eyebrow">Community-powered sentiment index</p>
+        <h2 class="fg-title">Community Fear &amp; Greed Index</h2>
+        <div class="fg-gauge-row">
+          <div class="fg-gauge" style="--needle-angle: {needle_angle:.2f}deg">
+            <div class="fg-needle"></div>
+            <div class="fg-gauge-center">
+              <div>
+                <strong>{score:.0f}</strong>
+                <span>{html.escape(label)}</span>
+              </div>
+            </div>
+          </div>
+          <div class="fg-copy">
+            <h2>{html.escape(label)}</h2>
+            <p>디젤매니아, 나이키매니아, 디시, 보배드림 등 커뮤니티의 최근 24시간 언급량과 Greed/Fear 언어를 과거 기준선과 비교한 지수입니다.</p>
+            <div class="fg-scale">
+              <span>0 Extreme Fear</span>
+              <span>50 Neutral</span>
+              <span>100 Extreme Greed</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fg-history">
+        {history_html}
+      </div>
+    </section>
+    """
+
+
+def build_fear_greed_history(index: object, rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    current_day = _parse_day(str(index.day))
+    yesterday = _find_snapshot(rows, current_day - timedelta(days=1) if current_day else None)
+    last_week = _find_snapshot(rows, current_day - timedelta(days=7) if current_day else None)
+    last_month = _find_snapshot(rows, current_day - timedelta(days=30) if current_day else None)
+    high = max(rows, key=lambda row: float(row["index_score"]), default=None)
+    low = min(rows, key=lambda row: float(row["index_score"]), default=None)
+    return [
+        _history_payload("Yesterday", yesterday),
+        _history_payload("Last Week", last_week),
+        _history_payload("Last Month", last_month),
+        _history_payload("Yearly High", high),
+        _history_payload("Yearly Low", low),
+        _history_payload("Current", {"day": index.day, "index_score": index.index_score, "regime": index.regime}),
+    ]
+
+
+def render_history_item(item: dict[str, object]) -> str:
+    return (
+        '<div class="fg-history-item">'
+        f"<small>{html.escape(str(item['label']))}</small>"
+        f"<strong>{html.escape(str(item['score']))}</strong>"
+        f"<span>{html.escape(str(item['caption']))}</span>"
+        "</div>"
+    )
+
+
+def _history_payload(label: str, row: dict[str, object] | None) -> dict[str, object]:
+    if not row:
+        return {"label": label, "score": "n/a", "caption": "데이터 없음"}
+    score = float(row["index_score"])
+    day = str(row.get("day", ""))
+    return {
+        "label": label,
+        "score": f"{score:.0f}",
+        "caption": f"{fear_greed_label(score)} · {day}",
+    }
+
+
+def _find_snapshot(rows: list[dict[str, object]], target_day: date | None) -> dict[str, object] | None:
+    if target_day is None:
+        return None
+    target = target_day.isoformat()
+    for row in rows:
+        if str(row.get("day")) == target:
+            return row
+    return None
+
+
+def _parse_day(value: str) -> date | None:
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def fear_greed_label(score: float) -> str:
+    if score <= 20:
+        return "Extreme Fear"
+    if score <= 35:
+        return "Fear"
+    if score < 65:
+        return "Neutral"
+    if score < 80:
+        return "Greed"
+    return "Extreme Greed"
 
 
 def render_post_row(row: dict[str, object]) -> str:
@@ -805,12 +1066,12 @@ def baseline_label(days: int, estimated_days: int) -> str:
 
 
 def score_to_color(score: float) -> str:
-    if score >= 75:
+    if score >= 80:
         return "#0f9f6e"
-    if score >= 60:
-        return "#2563eb"
-    if score <= 30:
+    if score >= 65:
+        return "#16a34a"
+    if score <= 20:
         return "#dc2626"
-    if score <= 42:
+    if score <= 35:
         return "#c2410c"
-    return "#4f46e5"
+    return "#64748b"
