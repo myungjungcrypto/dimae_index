@@ -696,7 +696,7 @@ def render_fear_greed_hero(index: object, history: list[dict[str, object]]) -> s
           </div>
           <div class="fg-copy">
             <h2>{html.escape(label)}</h2>
-            <p>디젤매니아, 나이키매니아, 디시, 보배드림 등 커뮤니티의 최근 24시간 언급량과 Greed/Fear 언어를 과거 기준선과 비교한 지수입니다.</p>
+            <p>디젤매니아, 나이키매니아, 디시, 보배드림, 종토방, 뽐뿌, FM코리아, 코인판 등 커뮤니티의 최근 24시간 언급량과 Greed/Fear 언어를 과거 기준선과 비교한 지수입니다.</p>
             <div class="fg-scale">
               <span>0 Extreme Fear</span>
               <span>50 Neutral</span>

@@ -11,6 +11,7 @@ from time import sleep
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .bobaedream import BobaedreamClient
+from .community_sources import CommunitySourceClient
 from .config import DEFAULT_CONFIG, PipelineConfig
 from .dcinside import DcinsideClient
 from .http import HttpError
@@ -55,6 +56,7 @@ def collect_sources(
     include_naver: bool = True,
     include_bobaedream: bool = True,
     include_dcinside: bool = True,
+    include_community: bool = True,
     include_trends: bool = True,
     strict: bool = False,
     verbose: bool = False,
@@ -122,6 +124,37 @@ def collect_sources(
             if strict:
                 raise
             result.warnings.append(f"dcinside skipped: {exc}")
+
+    if include_community:
+        community = CommunitySourceClient()
+        _log("collecting naver finance board posts...", verbose)
+        for stock in config.naver_finance_stocks:
+            try:
+                posts.extend(
+                    community.collect_naver_finance_posts(
+                        (stock,),
+                        pages_per_stock=config.naver_finance_pages_per_stock,
+                    )
+                )
+            except HttpError as exc:
+                if strict:
+                    raise
+                result.warnings.append(f"naver finance skipped ({stock.name}): {exc}")
+
+        _log("collecting additional community board posts...", verbose)
+        for board in config.community_boards:
+            try:
+                posts.extend(
+                    community.collect_board_posts(
+                        (board,),
+                        pages_per_board=config.community_pages_per_board,
+                        keywords=config.keywords,
+                    )
+                )
+            except HttpError as exc:
+                if strict:
+                    raise
+                result.warnings.append(f"community skipped ({board.name}): {exc}")
 
     result.posts_collected = store.upsert_posts(posts)
     result.trends_collected = store.upsert_trends(trends)
@@ -238,6 +271,7 @@ def run_daily(
     *,
     include_dcinside: bool = True,
     include_bobaedream: bool = True,
+    include_community: bool = True,
     strict: bool = False,
     verbose: bool = False,
     use_runtime_settings: bool = True,
@@ -246,6 +280,7 @@ def run_daily(
         config,
         include_bobaedream=include_bobaedream,
         include_dcinside=include_dcinside,
+        include_community=include_community,
         strict=strict,
         verbose=verbose,
         use_runtime_settings=use_runtime_settings,
@@ -264,6 +299,7 @@ def run_scheduler(
     timezone_name: str = "Asia/Seoul",
     include_dcinside: bool = False,
     include_bobaedream: bool = True,
+    include_community: bool = True,
     strict: bool = False,
     verbose: bool = False,
     run_on_start: bool = False,
@@ -280,6 +316,7 @@ def run_scheduler(
             config,
             include_dcinside=include_dcinside,
             include_bobaedream=include_bobaedream,
+            include_community=include_community,
             strict=strict,
             verbose=verbose,
         )
@@ -295,6 +332,7 @@ def run_scheduler(
                 config,
                 include_bobaedream=include_bobaedream,
                 include_dcinside=include_dcinside,
+                include_community=include_community,
                 strict=strict,
                 verbose=verbose,
             )

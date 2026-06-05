@@ -55,6 +55,39 @@ def parse_article_identity(
             return f"dcinside:{group}", article_id
         return None, None
 
+    if source == "naver_finance":
+        article_id = _first_int(query, "nid", "articleid", "articleId")
+        if article_id is not None:
+            group = _first_text(query, "code") or source_name
+            return f"naver_finance:{group}", article_id
+        return None, None
+
+    if source == "ppomppu":
+        article_id = _first_int(query, "no")
+        if article_id is not None:
+            group = _first_text(query, "id") or source_name
+            return f"ppomppu:{group}", article_id
+        return None, None
+
+    if source == "fmkorea":
+        for part in reversed(parts):
+            if part.isdigit():
+                group = _first_text(query, "mid") or source_name
+                return f"fmkorea:{group}", int(part)
+        return None, None
+
+    if source == "coinpan":
+        if len(parts) >= 2 and parts[1].isdigit():
+            return f"coinpan:{parts[0]}", int(parts[1])
+        return None, None
+
+    if source == "mlbpark":
+        article_id = _first_int(query, "id")
+        if article_id is not None:
+            group = _first_text(query, "b") or source_name
+            return f"mlbpark:{group}", article_id
+        return None, None
+
     if source != "naver_cafe":
         return None, None
 

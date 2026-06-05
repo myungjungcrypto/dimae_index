@@ -21,3 +21,10 @@
   - Spam rate inverse percentile: 5%
 - Daily snapshots are KST daily checkpoints of the rolling 24-hour score. Hourly snapshots are hourly checkpoints of the same rolling 24-hour score.
 - For weekly backtests, compare both `daily_snapshots` and `hourly_snapshots` against KOSPI, Nasdaq, and Bitcoin returns, and avoid overfitting thresholds before enough observed data exists.
+
+## Collection Sources
+
+- Keep the source set broad enough to reduce single-community jumps. Current default sources are Naver Cafe, Naver DataLab, Bobaedream, DCInside, Naver Finance discussion boards, Ppomppu stock forum, FMKorea stock/coin boards, Coinpan, and keyword-filtered MLBPark bullpen.
+- Additional public community sources should preserve existing historical rows. New sources or keyword changes apply from the next collection forward; do not rewrite old posts just to make the source mix look uniform.
+- For HTML-only sources, store title/URL/source metadata and parse stable article IDs where possible. Use source-specific article groups so `sequence_new` can identify newly advancing board posts.
+- Treat source expansion as a calibration change. Compare `Source Breakdown` after each deployment and be cautious interpreting score shifts during the first few days after adding a new source.

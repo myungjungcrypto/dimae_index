@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     collect.add_argument("--no-naver", action="store_true", help="Skip Naver APIs")
     collect.add_argument("--no-bobaedream", action="store_true", help="Skip Bobaedream boards")
     collect.add_argument("--no-dcinside", action="store_true", help="Skip DCInside")
+    collect.add_argument("--no-community", action="store_true", help="Skip additional public community boards")
     collect.add_argument("--no-trends", action="store_true", help="Skip Naver DataLab trends")
     collect.add_argument("--strict", action="store_true", help="Fail on source errors")
     collect.add_argument("--quick", action="store_true", help="Use a small Naver keyword sample")
@@ -50,6 +51,7 @@ def parse_args() -> argparse.Namespace:
     run = sub.add_parser("run", help="Collect, score, and print the latest index")
     run.add_argument("--no-bobaedream", action="store_true", help="Skip Bobaedream boards")
     run.add_argument("--no-dcinside", action="store_true", help="Skip DCInside")
+    run.add_argument("--no-community", action="store_true", help="Skip additional public community boards")
     run.add_argument("--strict", action="store_true", help="Fail on source errors")
     run.add_argument("--quick", action="store_true", help="Use a small Naver keyword sample")
     run.add_argument("--verbose", action="store_true", help="Print progress while collecting")
@@ -78,6 +80,7 @@ def parse_args() -> argparse.Namespace:
     schedule.add_argument("--timezone", default="Asia/Seoul", help="IANA timezone for schedule times")
     schedule.add_argument("--include-dcinside", action="store_true", help="Also collect DCInside")
     schedule.add_argument("--no-bobaedream", action="store_true", help="Skip Bobaedream boards")
+    schedule.add_argument("--no-community", action="store_true", help="Skip additional public community boards")
     schedule.add_argument("--run-on-start", action="store_true", help="Run one update immediately")
     schedule.add_argument("--strict", action="store_true", help="Fail on source errors")
     schedule.add_argument("--verbose", action="store_true", help="Print progress")
@@ -97,6 +100,8 @@ def maybe_quick_config(config: PipelineConfig, quick: bool) -> PipelineConfig:
         cafe_pages_per_keyword=1,
         dc_pages_per_gallery=1,
         bobaedream_pages_per_board=1,
+        naver_finance_pages_per_stock=1,
+        community_pages_per_board=1,
     )
 
 
@@ -116,6 +121,7 @@ def main() -> None:
             include_naver=not args.no_naver,
             include_bobaedream=not args.no_bobaedream,
             include_dcinside=not args.no_dcinside,
+            include_community=not args.no_community,
             include_trends=not args.no_trends,
             strict=args.strict,
             verbose=args.verbose,
@@ -149,6 +155,7 @@ def main() -> None:
             config,
             include_bobaedream=not args.no_bobaedream,
             include_dcinside=not args.no_dcinside,
+            include_community=not args.no_community,
             strict=args.strict,
             verbose=args.verbose,
             use_runtime_settings=not args.quick,
@@ -211,6 +218,7 @@ def main() -> None:
             timezone_name=args.timezone,
             include_dcinside=args.include_dcinside,
             include_bobaedream=not args.no_bobaedream,
+            include_community=not args.no_community,
             strict=args.strict,
             verbose=args.verbose,
             run_on_start=args.run_on_start,

@@ -41,6 +41,22 @@ class BobaedreamBoard:
 
 
 @dataclass(frozen=True)
+class NaverFinanceStock:
+    name: str
+    code: str
+    weight: float = 0.9
+
+
+@dataclass(frozen=True)
+class CommunityBoard:
+    name: str
+    source: str
+    url_template: str
+    weight: float = 0.8
+    keyword_filter: bool = False
+
+
+@dataclass(frozen=True)
 class PipelineConfig:
     db_path: Path = DEFAULT_DB_PATH
     keywords: tuple[str, ...] = (
@@ -82,9 +98,67 @@ class PipelineConfig:
         BobaedreamBoard("보배드림 자유게시판", "freeb", 0.7),
         BobaedreamBoard("보배드림 베스트글", "best", 1.0),
     )
+    naver_finance_stocks: tuple[NaverFinanceStock, ...] = (
+        NaverFinanceStock("삼성전자", "005930", 1.0),
+        NaverFinanceStock("SK하이닉스", "000660", 1.0),
+        NaverFinanceStock("NAVER", "035420", 0.8),
+        NaverFinanceStock("카카오", "035720", 0.8),
+        NaverFinanceStock("현대차", "005380", 0.8),
+        NaverFinanceStock("두산에너빌리티", "034020", 0.8),
+        NaverFinanceStock("한화오션", "042660", 0.8),
+        NaverFinanceStock("에코프로", "086520", 0.8),
+        NaverFinanceStock("에코프로비엠", "247540", 0.8),
+        NaverFinanceStock("HLB", "028300", 0.8),
+    )
+    community_boards: tuple[CommunityBoard, ...] = (
+        CommunityBoard(
+            "뽐뿌 증권포럼",
+            "ppomppu",
+            "https://www.ppomppu.co.kr/zboard/zboard.php?id=stock&page={page}",
+            0.8,
+            False,
+        ),
+        CommunityBoard(
+            "FM코리아 주식",
+            "fmkorea",
+            "https://www.fmkorea.com/index.php?mid=stock&sort_index=regdate&order_type=desc&page={page}",
+            0.7,
+            False,
+        ),
+        CommunityBoard(
+            "FM코리아 코인",
+            "fmkorea",
+            "https://www.fmkorea.com/index.php?mid=coin&sort_index=regdate&order_type=desc&page={page}",
+            0.7,
+            False,
+        ),
+        CommunityBoard(
+            "코인판 자유게시판",
+            "coinpan",
+            "https://coinpan.com/free?page={page}",
+            0.9,
+            False,
+        ),
+        CommunityBoard(
+            "코인판 코인정보",
+            "coinpan",
+            "https://coinpan.com/coin_info?page={page}",
+            0.9,
+            False,
+        ),
+        CommunityBoard(
+            "MLB파크 불펜",
+            "mlbpark",
+            "https://mlbpark.donga.com/mp/b.php?b=bullpen&m=list&p={page}",
+            0.6,
+            True,
+        ),
+    )
     cafe_pages_per_keyword: int = 2
     dc_pages_per_gallery: int = 2
     bobaedream_pages_per_board: int = 2
+    naver_finance_pages_per_stock: int = 1
+    community_pages_per_board: int = 1
 
 
 @dataclass(frozen=True)

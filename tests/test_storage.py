@@ -38,6 +38,55 @@ class StorageTest(unittest.TestCase):
         self.assertEqual(article_group, "dcinside:bitcoins_new1")
         self.assertEqual(article_id, 12345)
 
+    def test_parse_additional_community_article_identity(self) -> None:
+        cases = [
+            (
+                "naver_finance",
+                "네이버 종토방 삼성전자",
+                "https://finance.naver.com/item/board_read.naver?code=005930&nid=123456&page=1",
+                "naver_finance:005930",
+                123456,
+            ),
+            (
+                "ppomppu",
+                "뽐뿌 증권포럼",
+                "https://www.ppomppu.co.kr/zboard/view.php?id=stock&page=1&no=370118",
+                "ppomppu:stock",
+                370118,
+            ),
+            (
+                "fmkorea",
+                "FM코리아 주식",
+                "https://www.fmkorea.com/9917012373",
+                "fmkorea:FM코리아 주식",
+                9917012373,
+            ),
+            (
+                "coinpan",
+                "코인판 자유게시판",
+                "https://coinpan.com/free/469856522",
+                "coinpan:free",
+                469856522,
+            ),
+            (
+                "mlbpark",
+                "MLB파크 불펜",
+                "https://mlbpark.donga.com/mp/b.php?b=bullpen&id=202606050115924310&m=view",
+                "mlbpark:bullpen",
+                202606050115924310,
+            ),
+        ]
+
+        for source, source_name, url, expected_group, expected_id in cases:
+            with self.subTest(source=source):
+                article_group, article_id = parse_article_identity(
+                    source=source,
+                    source_name=source_name,
+                    url=url,
+                )
+                self.assertEqual(article_group, expected_group)
+                self.assertEqual(article_id, expected_id)
+
     def test_daily_rows_use_kst_day_and_article_sequence_newness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             store = SentimentStore(Path(tmp) / "sentiment.sqlite3")
