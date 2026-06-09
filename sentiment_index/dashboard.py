@@ -15,6 +15,149 @@ from .settings import add_term, load_settings, remove_term
 from .storage import SentimentStore
 
 
+DAILY_CHART_SCRIPT = """
+(() => {
+  const dataNode = document.getElementById("daily-chart-data");
+  const chart = document.getElementById("daily-score-chart");
+  const empty = document.getElementById("daily-chart-empty");
+  if (!dataNode || !chart) return;
+
+  const points = JSON.parse(dataNode.textContent || "[]");
+  const buttons = Array.from(document.querySelectorAll("[data-chart-range]"));
+  const ns = "http://www.w3.org/2000/svg";
+
+  function make(tag, attrs = {}, text = "") {
+    const node = document.createElementNS(ns, tag);
+    for (const [key, value] of Object.entries(attrs)) {
+      node.setAttribute(key, String(value));
+    }
+    if (text) node.textContent = text;
+    return node;
+  }
+
+  function scoreColor(score) {
+    if (score <= 20) return "#ef4444";
+    if (score <= 35) return "#f59e0b";
+    if (score < 65) return "#64748b";
+    if (score < 80) return "#84cc16";
+    return "#22c55e";
+  }
+
+  function shortDay(day) {
+    const parts = String(day).split("-");
+    return parts.length === 3 ? `${parts[1]}/${parts[2]}` : String(day);
+  }
+
+  function visiblePoints(range) {
+    if (range === "all") return points;
+    const count = Number(range);
+    return points.slice(-count);
+  }
+
+  function setActive(range) {
+    for (const button of buttons) {
+      const active = button.dataset.chartRange === range;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    }
+  }
+
+  function draw(range) {
+    const visible = visiblePoints(range);
+    chart.replaceChildren();
+    setActive(range);
+    if (empty) empty.hidden = visible.length > 0;
+    if (!visible.length) return;
+
+    const width = 900;
+    const height = 300;
+    const pad = { left: 44, right: 18, top: 18, bottom: 42 };
+    const plotWidth = width - pad.left - pad.right;
+    const plotHeight = height - pad.top - pad.bottom;
+    const y = (score) => pad.top + (100 - score) / 100 * plotHeight;
+    const x = (index) => {
+      if (visible.length === 1) return pad.left + plotWidth / 2;
+      return pad.left + index / (visible.length - 1) * plotWidth;
+    };
+
+    chart.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    chart.appendChild(make("rect", {
+      x: pad.left,
+      y: y(100),
+      width: plotWidth,
+      height: y(80) - y(100),
+      fill: "#f0fdf4",
+    }));
+    chart.appendChild(make("rect", {
+      x: pad.left,
+      y: y(20),
+      width: plotWidth,
+      height: y(0) - y(20),
+      fill: "#fef2f2",
+    }));
+
+    for (const tick of [100, 80, 50, 20, 0]) {
+      const tickY = y(tick);
+      chart.appendChild(make("line", {
+        x1: pad.left,
+        y1: tickY,
+        x2: width - pad.right,
+        y2: tickY,
+        class: "chart-grid",
+      }));
+      chart.appendChild(make("text", {
+        x: 10,
+        y: tickY + 4,
+        class: "chart-axis",
+      }, String(tick)));
+    }
+
+    const linePoints = visible
+      .map((point, index) => `${x(index).toFixed(2)},${y(Number(point.score)).toFixed(2)}`)
+      .join(" ");
+    chart.appendChild(make("polyline", {
+      points: linePoints,
+      class: "chart-line",
+    }));
+
+    const labelEvery = Math.max(1, Math.ceil(visible.length / 7));
+    visible.forEach((point, index) => {
+      const cx = x(index);
+      const cy = y(Number(point.score));
+      const isEstimated = Number(point.isEstimated || 0) === 1;
+      const dot = make("circle", {
+        cx,
+        cy,
+        r: visible.length > 90 ? 2.2 : 3.8,
+        fill: isEstimated ? "#ffffff" : scoreColor(Number(point.score)),
+        stroke: scoreColor(Number(point.score)),
+        "stroke-width": isEstimated ? 2 : 1,
+      });
+      dot.appendChild(make(
+        "title",
+        {},
+        `${point.day} · Score ${Number(point.score).toFixed(2)} · Posts ${point.posts} · New ${point.newPosts} · Greed ${(Number(point.greed) * 100).toFixed(1)}% · Fear ${(Number(point.fear) * 100).toFixed(1)}%`
+      ));
+      chart.appendChild(dot);
+
+      if (index % labelEvery === 0 || index === visible.length - 1) {
+        chart.appendChild(make("text", {
+          x: cx,
+          y: height - 14,
+          class: "chart-axis chart-x",
+        }, shortDay(point.day)));
+      }
+    });
+  }
+
+  for (const button of buttons) {
+    button.addEventListener("click", () => draw(button.dataset.chartRange || "30"));
+  }
+  draw(points.length > 30 ? "30" : "7");
+})();
+"""
+
+
 def serve_dashboard(db_path: Path, *, host: str = "127.0.0.1", port: int = 8765) -> None:
     store = SentimentStore(db_path)
     store.initialize()
@@ -119,6 +262,7 @@ def render_dashboard(store: SentimentStore) -> str:
     baseline_note = baseline_label(index.baseline_days, index.baseline_estimated_days)
     metric_notes = build_metric_notes()
     hero_html = render_fear_greed_hero(index, build_fear_greed_history(index, daily_rows))
+    daily_chart_html = render_daily_score_chart(index, daily_rows)
     explanation_html = render_explanations()
     threshold_html = render_thresholds(index)
     source_html = render_source_breakdown(source_rows)
@@ -377,6 +521,119 @@ def render_dashboard(store: SentimentStore) -> str:
     .hourly-wrap {{
       margin-bottom: 18px;
     }}
+    .chart-panel {{
+      margin: 0 0 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+    }}
+    .chart-head {{
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 16px 16px 0;
+    }}
+    .chart-head h2 {{
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: 0;
+    }}
+    .chart-head p {{
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }}
+    .chart-controls {{
+      display: inline-flex;
+      flex: 0 0 auto;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #f8fafc;
+    }}
+    .chart-controls button {{
+      min-width: 58px;
+      height: 34px;
+      border: 0;
+      border-right: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }}
+    .chart-controls button:last-child {{
+      border-right: 0;
+    }}
+    .chart-controls button.active {{
+      background: var(--ink);
+      color: #ffffff;
+    }}
+    .chart-frame {{
+      position: relative;
+      overflow-x: auto;
+      padding: 8px 12px 0;
+    }}
+    .chart-svg {{
+      display: block;
+      width: 100%;
+      min-width: 620px;
+      height: auto;
+    }}
+    .chart-grid {{
+      stroke: #e5e7eb;
+      stroke-width: 1;
+    }}
+    .chart-line {{
+      fill: none;
+      stroke: var(--accent);
+      stroke-width: 3;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+    }}
+    .chart-axis {{
+      fill: var(--muted);
+      font-size: 11px;
+    }}
+    .chart-x {{
+      text-anchor: middle;
+    }}
+    .chart-empty {{
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 13px;
+    }}
+    .chart-foot {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      padding: 0 16px 16px;
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .chart-foot span {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }}
+    .chart-foot i {{
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      display: inline-block;
+      background: var(--accent);
+    }}
+    .chart-foot .estimated-dot i {{
+      background: #ffffff;
+      border: 2px solid var(--muted);
+    }}
     .explain {{
       margin: 0 0 18px;
       background: var(--panel);
@@ -581,6 +838,9 @@ def render_dashboard(store: SentimentStore) -> str:
       .fg-main {{ border-right: 0; border-bottom: 1px solid var(--line); }}
       .fg-gauge-row {{ grid-template-columns: 1fr; justify-items: center; text-align: center; }}
       .fg-history {{ grid-template-columns: 1fr 1fr; }}
+      .chart-head {{ flex-direction: column; }}
+      .chart-controls {{ width: 100%; }}
+      .chart-controls button {{ flex: 1; min-width: 0; }}
       .explain-grid {{ grid-template-columns: 1fr; }}
       .threshold-grid {{ grid-template-columns: 1fr; }}
       .settings-grid {{ grid-template-columns: 1fr; }}
@@ -599,6 +859,7 @@ def render_dashboard(store: SentimentStore) -> str:
   </header>
   <main>
     {hero_html}
+    {daily_chart_html}
     <section class="metrics">
       <div class="metric"><strong>Posts</strong><span>{index.post_count}</span><small>{html.escape(metric_notes["posts"])}</small></div>
       <div class="metric"><strong>New Posts</strong><span>{index.new_post_count}</span><small>{html.escape(metric_notes["new_posts"])}</small></div>
@@ -665,6 +926,83 @@ def render_gauge_segments() -> str:
     return "\n".join(
         f'<path class="fg-arc-segment" d="{_gauge_arc_path(start, end)}" stroke="{color}" />'
         for start, end, color in segments
+    )
+
+
+def render_daily_score_chart(index: object, rows: list[dict[str, object]]) -> str:
+    points = build_daily_chart_points(index, rows)
+    payload = _json_for_script(points)
+    return f"""
+    <section class="chart-panel">
+      <div class="chart-head">
+        <div>
+          <h2>Daily Score Trend</h2>
+          <p>일별 대표값은 KST 00시대에 저장되는 전날 Rolling 24H Score이며, 오른쪽 끝에는 현재 Rolling 24H 값이 붙습니다.</p>
+        </div>
+        <div class="chart-controls" role="group" aria-label="Daily chart range">
+          <button type="button" data-chart-range="7">7D</button>
+          <button type="button" data-chart-range="30">30D</button>
+          <button type="button" data-chart-range="all">All</button>
+        </div>
+      </div>
+      <div class="chart-frame">
+        <svg id="daily-score-chart" class="chart-svg" role="img" aria-label="Daily Fear and Greed score trend"></svg>
+        <div id="daily-chart-empty" class="chart-empty" hidden>일별 스냅샷이 없습니다.</div>
+      </div>
+      <div class="chart-foot">
+        <span><i></i>Observed/current</span>
+        <span class="estimated-dot"><i></i>DataLab estimate</span>
+      </div>
+      <script id="daily-chart-data" type="application/json">{payload}</script>
+      <script>{DAILY_CHART_SCRIPT}</script>
+    </section>
+    """
+
+
+def build_daily_chart_points(index: object, rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    points_by_day: dict[str, dict[str, object]] = {}
+    for row in rows:
+        day = str(row.get("day", ""))
+        if not day:
+            continue
+        points_by_day[day] = _chart_point_from_row(row)
+
+    current_day = str(index.day)
+    points_by_day[current_day] = {
+        "day": current_day,
+        "score": round(float(index.index_score), 2),
+        "regime": str(index.regime),
+        "posts": int(index.post_count),
+        "newPosts": int(index.new_post_count),
+        "greed": round(float(index.fomo_score), 4),
+        "fear": round(float(index.risk_score), 4),
+        "isEstimated": int(getattr(index, "is_estimated", 0)),
+        "snapshotSource": str(index.snapshot_source),
+    }
+
+    return [points_by_day[day] for day in sorted(points_by_day)]
+
+
+def _chart_point_from_row(row: dict[str, object]) -> dict[str, object]:
+    return {
+        "day": str(row["day"]),
+        "score": round(float(row["index_score"]), 2),
+        "regime": str(row.get("regime", "")),
+        "posts": int(row.get("post_count", 0) or 0),
+        "newPosts": int(row.get("new_post_count", 0) or 0),
+        "greed": round(float(row.get("fomo_score", 0.0) or 0.0), 4),
+        "fear": round(float(row.get("risk_score", 0.0) or 0.0), 4),
+        "isEstimated": int(row.get("is_estimated", 0) or 0),
+        "snapshotSource": str(row.get("snapshot_source", "")),
+    }
+
+
+def _json_for_script(value: object) -> str:
+    return (
+        json.dumps(value, ensure_ascii=False)
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
     )
 
 
